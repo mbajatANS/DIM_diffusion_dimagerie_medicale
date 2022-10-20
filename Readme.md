@@ -230,5 +230,5 @@ Ce lien est paramétrable avec la propriété `pacs.stowUrl` au niveau du fichie
 
 ## Contact
 
-Pour toute information complémentaire, merci de contacter guillaume.pasquier@b-com.com
+Pour toute information complémentaire, merci de contacter guillaume.pasquier@b-com.com et ans-forge@esante.gouv.fr
 
