@@ -1,0 +1,113 @@
+<!--
+  ~  front.component.html - DRIMBox
+  ~  Copyright 2022 b<>com
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~    http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+
+<div class="topScreen">
+  <br />
+  <h2> Ma liste de patients</h2>
+  <br />
+</div>
+<br />
+<br />
+<table class="center">
+  <thead>
+    <tr>
+      <th scope="col">Patient</th>
+      <th scope="col">Age</th>
+      <th scope="col">Sexe</th>
+      <th scope="col">Modalité</th>
+      <th scope="col">Région anatomique</th>
+      <th scope="col">Statut Patient</th>
+      <th scope="col">Statut Compte Rendu</th>
+
+      <th scope="col">Antériorité</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>BERNARD JEAN</td>
+      <td>59 ans</td>
+      <td>M</td>
+      <td>CT</td>
+      <td>Tete</td>
+      <td>En salle d'attente</td>
+      <td>A réaliser</td>
+      <td>
+        <button mat-raised-button color="success" title="Consulter" (click)="goToUser()">consulter</button>
+      </td>
+    </tr>
+    <tr>
+      <td>PATI LAURENCE</td>
+      <td>34 ans</td>
+      <td>F</td>
+      <td>CT</td>
+      <td>Thorax</td>
+      <td>Acquis</td>
+      <td>Validé</td>
+      <td>
+        <button mat-raised-button color="success" title="Consulter" (click)="goToUser()">consulter</button>
+      </td>
+    </tr>
+    <tr>
+      <td>MARTIN JEAN</td>
+      <td>52 ans</td>
+      <td>M</td>
+      <td>CT</td>
+      <td>Membres inférieurs</td>
+      <td>Acquis</td>
+      <td>Tapé</td>
+      <td>
+        <button mat-raised-button color="success" title="Consulter" (click)="goToUser()">consulter</button>
+      </td>
+    </tr>
+    <tr>
+      <td>DOE ELSA</td>
+      <td>26 ans</td>
+      <td>F</td>
+      <td>CT</td>
+      <td>Tete</td>
+      <td>Acquis</td>
+      <td>Validé</td>
+      <td>
+        <button mat-raised-button color="success" title="Consulter" (click)="goToUser()">consulter</button>
+      </td>
+    </tr>
+    <tr>
+      <td>MARK KATE</td>
+      <td>67 ans</td>
+      <td>F</td>
+      <td>CT</td>
+      <td>Membres supérieurs</td>
+      <td>Acquis</td>
+      <td>Tapé</td>
+      <td>
+        <button mat-raised-button color="success" title="Consulter" (click)="goToUser()">consulter</button>
+      </td>
+    </tr>
+    <tr>
+      <td>GREEN WILL</td>
+      <td>18 ans</td>
+      <td>M</td>
+      <td>CT</td>
+      <td>Thorax</td>
+      <td>Acquis</td>
+      <td>Validé</td>
+      <td>
+        <button mat-raised-button color="success" title="Consulter" (click)="goToUser()">consulter</button>
+      </td>
+    </tr>
+  </tbody>
+</table>

@@ -1,0 +1,570 @@
+/*
+ *  documents.service.ts - DRIMBox
+ *  Copyright 2022 b<>com
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { HttpClient } from '@angular/common/http';
+import { Injectable } from '@angular/core';
+import * as dicomParser from 'dicom-parser';
+
+/**
+ * Enum for mimeTypes
+ * */
+enum mimeTypeEnum {
+  dicom = 'application/dicom',
+  xml = 'text/xml'
+}
+
+@Injectable({
+  providedIn: 'root'
+})
+
+export class DocumentsService {
+
+  // List of kos docs (mimeType = application/dicom)
+  kosDocs = [{
+    uniqueId: '',
+    repositoryId: '',
+    modalite: '',
+    region: '',
+    display: false,
+    retrieveURL: '',
+    accessionNumber: '',
+    mimeType: '',
+    series: [{
+      serieDescription: '',
+      nbImages: '',
+      serieModalite: '',
+      serieLocation: '',
+      retrieveURL: ''
+    }]
+  }];
+
+  // List of cda docs (mimeType = text/xml)
+  cdaDocs = [
+    {
+      uniqueId: '',
+      repositoryId: '',
+      mimeType: '',
+      description: '',
+      dateExam: '',
+      modalite: '',
+      region: '',
+      retrieveURL: '',
+      display: false,
+      accessionNumber: '',
+      refKos: [{
+        kos: this.kosDocs
+      }],
+      rapports: [{
+        pdfValue: '',
+        auteur: '',
+        description: ''
+      }]
+    }
+  ];
+
+
+  // array with patient infos
+  infoPatient = {
+    nom: '',
+    prenom: '',
+    sexe: '',
+    dateNaissance: '',
+    ins: ''
+  };
+  disp = false;
+
+  // Number of cda docs retrieved from dmp
+  nbDocs = "0";
+  // Boolean to display error structure panel
+  sectError = false;
+  // Ins of patient retrieved fro url param
+  ins: string;
+  // Value of last study opened
+  studyInstanceLocal = '';
+  // Value of last serie opened
+  serieInstanceLocal = '';
+  // Boolean indicates if import panel opened from serie or study level
+  openImportSerie = false;
+
+  /**
+   * Constructor
+   * @param http for rest requests
+   */
+  constructor(private readonly http: HttpClient) {
+    this.cdaDocs = [];
+    this.kosDocs = [];
+  }
+
+  /**
+   * Return number of cda docs
+   * */
+  getNbDocuments() {
+    return this.cdaDocs.length;
+  }
+
+  /**
+   * Initiate 3_1 request to retrieve list of documents from patient
+   * @param ins of the patient
+   */
+  td3_1(ins: string) {
+    this.ins = ins;
+    // Clear list of documents
+    this.cdaDocs = [];
+    this.kosDocs = [];
+    // Get request to backend
+    this.http.get(`/api/query/${ins}`, { responseType: 'text' }).subscribe(data => {
+      this.parsing3_1Response(data);
+    },
+      err => {
+        // check error status code is 500, if so, display error
+        this.sectError = true;
+      });
+  }
+
+  /**
+ * Initiate 3_1 request to retrieve list of documents filters from patient
+ * @param ins of the patient
+ */
+  td3_1Filters(ins: string, modalities: string[], regions: string[], startDate: string, stopDate: string) {
+    this.ins = ins;
+    // Clear list of documents
+    this.kosDocs = [];
+    this.cdaDocs = [];
+    // Get request to backend
+    let filterparam = "";
+    if (modalities.length !== 0) {
+      modalities.forEach(function (modality) {
+        filterparam += `&modality=${modality}`;
+      });
+    }
+
+    if (regions.length !== 0) {
+      regions.forEach(function (region) {
+        filterparam += `&region=${region}`;
+      });
+    }
+
+    if (startDate !== null) {
+      filterparam += `&start=${startDate}0000`;
+    }
+
+    if (stopDate !== null) {
+      filterparam += `&stop=${stopDate}0000`;
+    }
+
+    console.log(filterparam);
+    this.http.get(`/api/query/${ins}?${filterparam.substr(1)}`, { responseType: 'text' }).subscribe(data => {
+      this.parsing3_1Response(data);
+    },
+      err => {
+        // check error status code is 500, if so, display error
+        this.sectError = true;
+      });
+
+  }
+
+  /**
+   * Parse 3_1 response to retrieve documents info from patient
+   * @param response 3_1 request response from dmp
+   */
+  parsing3_1Response(response: string) {
+    console.log(response);
+    // Verify if response is Success
+    const reqStatus = response.split("ResponseStatusType:")[1].split("\"")[0];
+    if (reqStatus === "Success") {
+      // Get number of documents
+      this.nbDocs = response.split("totalResultCount=\"")[1].split("\"")[0];
+      // Fill Patient Info
+      // Check if patient has documents
+      if (this.nbDocs !== "0") {
+        this.fillInfoPatient(response);
+        // Retrieve common repositoryId
+        const repositoryId = response.split("repositoryUniqueId")[1].split("Value>")[1].split("</")[0];
+
+        for (let i = 0; i < Number(this.nbDocs); i++) {
+          // Retrieve informations of each document
+          const metadataDoc = response.split("<ns4:ExtrinsicObject")[i + 1].split("</ns4:ExtrinsicObject>")[0];
+          this.retrieveInformations(metadataDoc, repositoryId);
+        }
+
+        // Sort CDA by exam date (more recent first)
+        this.cdaDocs.sort((a, b) => {
+          if (a.dateExam < b.dateExam) return 1;
+          else if (a.dateExam > b.dateExam) return -1;
+          else return 0;
+        });
+
+        // Link accession number between Cda and Kos documents
+        this.cdaDocs.forEach((cda) => {
+          cda.dateExam = `${cda.dateExam.substr(6, 2)}/${cda.dateExam.substr(4, 2)}/${cda.dateExam.substr(0, 4)} ${cda.dateExam.substr(8, 2)}:${cda.dateExam.substr(10, 2)}:${cda.dateExam.substr(12, 2)}`;
+          this.FindKosForCda(cda);
+          if (cda.refKos.length !== 0) {
+            cda.description = `${cda.modalite} / ${cda.region}`;
+          }
+        });
+      }
+    }
+  }
+
+
+  /**
+   * Fill patient infos from response
+   * @param response 3_1 request response from dmp
+   */
+  fillInfoPatient(response) {
+    this.infoPatient.dateNaissance = "19/11/1963";
+    this.infoPatient.nom = response.split("sourcePatientInfo")[1].split("PID-5|")[1].split("^")[0];
+    this.infoPatient.prenom = response.split("sourcePatientInfo")[1].split("PID-5|")[1].split("^")[1];
+    this.infoPatient.sexe = response.split("sourcePatientInfo")[1].split("PID-8|")[1].split("<")[0];
+    this.infoPatient.ins = this.ins;
+  }
+
+  /**
+   * Find for each cda the kos with the same accession number
+   * */
+  FindKosForCda(cda) {
+    // Sort documents to have cda in first
+    this.kosDocs.forEach(function (kosDoc) {
+      if (kosDoc.accessionNumber === cda.accessionNumber) {
+        cda.refKos.push({ kos: kosDoc });
+
+        kosDoc.modalite.split("et ").forEach(function (modal) {
+          if (cda.modalite.search(modal) === -1) {
+            cda.modalite += "et " + modal;
+          }
+        });
+
+        if (cda.region.search(kosDoc.region) === -1) {
+          cda.region += "et " + kosDoc.region;
+        }
+      }
+    });
+    cda.modalite = cda.modalite.substr(3);
+    cda.region = cda.region.substr(3);
+  }
+
+  /**
+   * Parse metadatas to retrieve infos from cda and kos
+   * @param metadataDoc for one document
+   * @param repoId repositoryId
+   */
+  retrieveInformations(metadataDoc: string, repoId: string) {
+    const documentId = metadataDoc.split("XDSDocumentEntry.patientId")[1].split("value=\"")[1].split("\"")[0];
+    const mimeTypeValue = metadataDoc.split("mimeType=\"")[1].split("\"")[0];
+    let descriptionValue = '';
+    if (metadataDoc.search("<ns4:Name>") !== -1) {
+      descriptionValue = metadataDoc.split("<ns4:Name>")[1].split("value=\"")[1].split("\"")[0];
+    }
+    const dateExamValue = metadataDoc.split("creationTime")[1].split("Value>")[1].split("<")[0];
+    const access = metadataDoc.split("accession")[0].split("referenceIdList")[1].split("<ns4:Value>");
+    const retrieveUrl = metadataDoc.split("uniqueId")[0].split("referenceIdList")[1].split("<ns4:Value>");
+    let accessi = '';
+    let retri = '';
+    // Retrieve accessionNumber
+    for (const x of access) {
+      if (x.includes("1.2.3.4.5.6")) {
+        accessi = x.split("^")[0];
+      }
+    }
+    // Retrieve retrieveUrl
+    for (const y of retrieveUrl) {
+      if (y.includes("1.2.3.4&")) {
+        retri = y.split("^")[0];
+        console.log(retri);
+      }
+    }
+
+    // Add cda document
+    if (mimeTypeValue === mimeTypeEnum.xml) {
+      const temp = {
+        uniqueId: documentId,
+        repositoryId: repoId,
+        mimeType: mimeTypeValue,
+        description: descriptionValue,
+        dateExam: dateExamValue,
+        modalite: '',
+        region: '',
+        retrieveURL: retri,
+        display: false,
+        accessionNumber: accessi,
+        refKos: [{
+          kos: null
+        }],
+        rapports: [{
+          pdfValue: '',
+          auteur: '',
+          description: ''
+        }]
+      }
+
+      // Pop kos ref and rapports from temp
+      temp.refKos.pop();
+      temp.rapports.pop();
+      // Add document in our cda document list
+      this.cdaDocs.push(temp);
+    }
+
+    // Add kos document
+    else if (mimeTypeValue === mimeTypeEnum.dicom) {
+      let modal = '';
+      let region = '';
+
+      // Retrieve list of modality and regions from metadata
+      metadataDoc.split("urn:uuid:2c6b8cb7-8b2a-4051-b291-b1ae6a575ef4").forEach(function (event) {
+
+        if (event.split("<ns4:Value>")[1].split("</ns4:Value>")[0] === "1.2.250.1.213.2.5" && modal.search(event.split("nodeRepresentation=\"")[1].split("\"")[0]) === -1) {
+          modal += `et ${event.split("nodeRepresentation=\"")[1].split("\"")[0]}  `;
+        }
+
+        else if (event.split("<ns4:Value>")[1].split("</ns4:Value>")[0] === "2.16.840.1.113883.6.3" && region.search(event.split("nodeRepresentation=\"")[1].split("\"")[0]) === -1) {
+          region += `et ${event.split("nodeRepresentation=\"")[1].split("\"")[0]}  `;
+        }
+
+      });
+
+      const temp = {
+        uniqueId: documentId,
+        repositoryId: repoId,
+        modalite: modal.substr(3),
+        region: region.substr(3),
+        display: false,
+        retrieveURL: retri,
+        accessionNumber: accessi,
+        mimeType: mimeTypeValue,
+        series: [{
+          serieDescription: '',
+          nbImages: '',
+          serieModalite: '',
+          serieLocation: '',
+          retrieveURL: ''
+        }]
+      }
+
+      temp.series.pop();
+      // Adding kos document in array
+      this.kosDocs.push(temp);
+    }
+  }
+
+  /**
+   * Show or hide study array
+   * @param doc
+   */
+  dispCda(doc) {
+    doc.display = !doc.display;
+  }
+
+
+
+  /**
+   * Initiate 3_2 request to retrieve specific document (cda or kos) from dmp
+   * @param doc document we want to retrieve
+   * @param type indicates if we are on study or serie level
+   */
+  td3_2(doc, type: string) {
+    // If serie level
+    if (type === "serie") {
+      // Hide or show the serie
+      doc.display = !doc.display;
+      // Verify we didn't already import the kos
+      // Get request to backend to retrieve kos associated to cda accession number
+      this.http.get(`/api/retrieve/${this.ins}?repositoryId=${doc.repositoryId}&uniqueId=${doc.uniqueId}`,
+        { responseType: 'arraybuffer' as 'json' }).subscribe(data => {
+          // Parsing kos received
+          this.parsing3_2Response(data, type, doc);
+        });
+    }
+    // If study level
+    // Verify we didn't already import the cda
+    else if (type === "study" && doc.rapports.length === 0) {
+      // Get request to backend to retrieve cda
+      this.http.get(`/api/retrieve/${this.ins}?repositoryId=${doc.repositoryId}&uniqueId=${doc.uniqueId}`,
+        { responseType: 'arraybuffer' as 'json' }).subscribe(data => {
+          // Parsing cda received
+          this.parsing3_2Response(data, type, doc);
+        });
+    }
+  }
+
+  /**
+   * Parsing 3_2 response from dmp
+   * @param response given by dmp
+   * @param type indicates if we are on study or serie level
+   * @param doc document we want to retrieve
+   * @param docCDA document cda link we the kos
+   */
+  parsing3_2Response(response, type: string, doc) {
+    // if Kos
+    if (doc.mimeType === mimeTypeEnum.dicom) {
+      if (doc.series.length === 0) {
+        this.parsingKos(response, type, doc)
+      }
+    }
+    // If Cda
+    else if (doc.mimeType === mimeTypeEnum.xml) {
+      this.parsingCda(response, doc, type);
+    }
+  }
+
+  /**
+   * Parse kos retrieved
+   * @param response given by dmp
+   * @param type indicates if we are on study or serie level
+   * @param doc document we want to retrieve
+   */
+  parsingKos(response, type, doc) {
+    // Convert byteArray response to string
+    const responseString = String.fromCharCode.apply(null, new Uint8Array(response));
+    // Find start of kos
+    const startKOS = responseString.search('DICM') - 128;
+    response = response.slice(startKOS);
+    const byteArray = new Uint8Array(response);
+    try {
+      // Parse the byte array to get a DataSet object that has the parsed contents
+      const dataSet = dicomParser.parseDicom(byteArray);
+      if (type === "serie") {
+        const desc = dataSet.string('x0040a160');
+        doc.description = dataSet.string('x00081030');
+        const dataSetSeries = dataSet.elements['x0040a375'].items[0].dataSet.elements['x00081115'].items;
+        // Fill serie infos with kos
+        dataSetSeries.forEach(function (serie) {
+          doc.series.push({
+            serieDescription: desc.split(serie.dataSet.string('x0020000e') + ' : ')[1].split(' : ')[1].split('\n')[0],
+            nbImages: serie.dataSet.elements['x00081199'].items.length,
+            serieModalite: desc.split(serie.dataSet.string('x0020000e') + ' :')[1].split(' : ')[0],
+            serieLocation: 'Tête',
+            retrieveURL: doc.retrieveURL
+          });
+        }, this);
+      }
+    }
+    catch (ex) {
+      console.log('Error parsing byte stream', ex);
+    }
+  }
+
+  /**
+   * Parsing cda document and retrieve pdf
+   * @param response given by dmp
+   * @param doc document we want to retrieve
+   * @param type indicates if we are on study or serie level
+   */
+  parsingCda(response, doc, type) {
+    // First we need to convert the request into a string so we can extract the PDF in base64
+    const blob = new Blob([new Uint8Array(response)], { type: 'text/plain; charset=utf-8' });
+    blob.text().then(text => {
+      console.log(text);
+      if (text.search("application/pdf") !== -1) {
+        // Indexes
+        const firstPDFTag = "representation=\"B64\">";
+        // We need to apply an offset to select the first char of the base64 str
+        const firstPDFCharIndex = text.search(firstPDFTag) + firstPDFTag.length;
+        const lastPDFCharIndex = text.search("</text>");
+        // Slice base64 PDG
+        const strPdfFile = text.slice(firstPDFCharIndex, lastPDFCharIndex);
+        // Open raw data
+        //window.open("data:application/pdf;base64, " + encodeURI(strPdfFile))
+        doc.rapports.push({
+          pdfValue: strPdfFile,
+          auteur: `${text.split("<author>")[1].split("<family>")[1].split("</family>")[0]} ${text.split("<author>")[1].split("<given>")[1].split("</given>")[0]}`,
+          description: text.split("<title>")[1].split("</title>")[0]
+        });
+        // Or make it in a embed element if you prefer
+        if (type === "study") {
+          this.openPdf(doc);
+        }
+      }
+    });
+  }
+
+  /**
+   * Open window to ohif to display study/series
+   * @param retrieveURL of the study/series
+   * @param doc from the study/series
+   */
+  goToViewer(retrieveURL) {
+    // Need this to get auth ohif beforehand (transmit the cookie value to the backend)
+    // TODO : Change this and pass the cookie to the OHIF metadata (see backend for details)
+    const urlRetrieve = retrieveURL;
+
+    const drimboxConso = "localhost:8081";
+    const drimboxSource = "localhost:8082";
+    const viewerURL = "localhost:3000";
+
+    window.open(`http://${viewerURL}/viewer?url=http://${drimboxConso}/ohifmetadata/${drimboxSource}&studyInstanceUIDs=${urlRetrieve}`, '_blank');
+    //window.open(`http://${viewerURL}/viewer?url=${urlRetrieve}`, '_blank');
+  }
+
+  /**
+   * Call backend to import study/serie to local pacs
+   * */
+  ImportStow() {
+    if (!this.openImportSerie) {
+      this.http.get(`/api/stow?studyUID=${this.studyInstanceLocal}`).subscribe(data => console.log("data"));
+    }
+    else {
+      this.http.get(`/api/stow?studyUID=${this.studyInstanceLocal}&serieUID=${this.serieInstanceLocal}`).subscribe(data => console.log("data"));
+    }
+  }
+
+  /**
+   * Display import panel from study level
+   * @param doc from the study
+   */
+  openFormStudy(doc): void {
+    // Retrieve clicked studyInstanceId
+    this.studyInstanceLocal = doc.retrieveURL;
+    this.disp = true;
+    this.openImportSerie = false;
+  }
+
+  /**
+   * Display import panel from serie level
+   * @param serie from the serie
+   */
+  openFormSerie(serie): void {
+    // Retrieve clicked studyInstanceId and serieInstanceId
+    this.studyInstanceLocal = serie.retrieveURL.split("studies/")[1].split("/")[0];
+    this.serieInstanceLocal = serie.retrieveURL.split("series/")[1].split("/")[0];
+    this.disp = true;
+    this.openImportSerie = true;
+  }
+
+  /**
+   * Close import panel
+   * */
+  closeForm(): void {
+    this.disp = false;
+  }
+
+  /**
+   * Open pdf page from cda
+   * @param doc
+   */
+  openPdf(doc) {
+    // Check if already retrieve the pdf
+    if (doc.rapports.length !== 0) {
+      const pdfWindow = window.open("");
+      pdfWindow.document.write(`<embed width='100%' height='100%' src='data:application/pdf;base64,${encodeURI(doc.rapports[0].pdfValue)}'></embed>`);
+    }
+    // Try retrieve the pdf if exists
+    else {
+      this.td3_2(doc, "study");
+    }
+  }
+}
+

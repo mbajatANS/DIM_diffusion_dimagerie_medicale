@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  # Drimbox
+  drimbox-conso:
+    build:
+      context: ../..
+    ports:
+      - 8081:8081
+    environment:
+      DRIMBOX_MODE: conso

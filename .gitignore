@@ -1,0 +1,8 @@
+
+Backend/quarkus.log
+
+.idea/
+
+.fleet/
+
+*.jks

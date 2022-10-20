@@ -1,0 +1,225 @@
+<!--
+  ~  request.component.html - DRIMBox
+  ~  Copyright 2022 b<>com
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~    http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+
+<div class="requestcomponent">
+  <div *ngIf="documentsService.disp === true" class="form-popup" style="z-index: 3;">
+    <form class="form-container">
+      <h2 style="color: black;">Importer</h2>
+      <div style="display: flex;">
+        <p style="color: black; margin-left : 5%">Vers pacs 1 :</p>
+        <button style="margin-left : 15%;" mat-raised-button color="success" (click)="documentsService.ImportStow()">
+          Importer
+        </button>
+      </div>
+      <br />
+      <div style="display: flex;">
+        <p style="color: black; margin-left : 5%">Vers pacs 2 :</p>
+        <button style="margin-left : 15%;" mat-raised-button color="success">
+          Importer
+        </button>
+      </div>
+
+      <br />
+      <br />
+      <button type="button" mat-raised-button color="basic" (click)="documentsService.closeForm()">Fermer</button>
+    </form>
+  </div>
+
+
+  <div *ngIf="documentsService.sectError === true">
+    <h3>Une erreur est survenue : Impossible de récupérer les documents avec cette situation d'exercice</h3>
+    <button type="button" mat-raised-button color="success" (click)="redirectSect()">Modifier</button>
+  </div>
+
+  <div *ngIf="accessError === true">
+    <h3>Une erreur est survenue : Vous n'avez pas le droit d'accéder aux documents du patient</h3>
+  </div>
+
+  <div>
+    <h4 style="text-align: center;">Informations sur le patient</h4>
+    <table class="center">
+      <thead>
+        <!-- En-tête du tableau -->
+        <tr>
+          <th *ngFor="let head of headElementsPatient">{{ head }} </th>
+        </tr>
+      </thead>
+
+      <tbody>
+        <!-- Corps du tableau -->
+        <tr>
+          <td>{{ documentsService.infoPatient.nom }}</td>
+          <td>{{ documentsService.infoPatient.prenom }}</td>
+          <td>{{ documentsService.infoPatient.sexe }}</td>
+          <td>{{ documentsService.infoPatient.dateNaissance }}</td>
+          <td>{{ documentsService.infoPatient.ins }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <br />
+  <br />
+
+  <div style="z-index: 2; margin-left: 15%; margin-right: 0%">
+    <p>Date de début de l'acte entre le &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;et le</p>
+    <mat-form-field appearance="fill" style="background-color: grey;">
+      <mat-label>Début</mat-label>
+      <input style="color: black" matInput [matDatepicker]="pickers" [formControl]="startDate" [max]="stopDate.value">
+      <mat-hint>dd/mm/yyyy</mat-hint>
+      <mat-datepicker-toggle matSuffix [for]="pickers"></mat-datepicker-toggle>
+      <mat-datepicker #pickers></mat-datepicker>
+    </mat-form-field>
+
+    <mat-form-field appearance="fill" style="background-color: grey; margin-left: 5%;">
+      <mat-label>Date</mat-label>
+      <input style="color: black" matInput [matDatepicker]="picker" [formControl]="stopDate" [min]="startDate.value">
+      <mat-hint>dd/mm/yyyy</mat-hint>
+      <mat-datepicker-toggle matSuffix [for]="picker"></mat-datepicker-toggle>
+      <mat-datepicker #picker></mat-datepicker>
+    </mat-form-field>
+
+    <mat-form-field appearance="fill" style="background-color: grey;  margin-left: 5%;">
+      <mat-label>Regions anatomiques</mat-label>
+      <mat-select [formControl]="regions" multiple>
+        <mat-option *ngFor="let region of regionsList" [value]="region">{{region}}</mat-option>
+      </mat-select>
+    </mat-form-field>
+
+    <mat-form-field appearance="fill" style="background-color: grey; margin-left: 5%;">
+      <mat-label>Modalites</mat-label>
+      <mat-select [formControl]="modalites" multiple>
+        <mat-option *ngFor="let modalite of modalitesList" [value]="modalite">{{modalite}}</mat-option>
+      </mat-select>
+    </mat-form-field>
+
+
+    <button type="button" mat-raised-button color="success" style="margin-left: 5%;" (click)="filterSearch()">Rechercher</button>
+
+  </div>
+
+  <h4 *ngIf="documentsService.getNbDocuments() !== -1" style="text-align:center">{{documentsService.getNbDocuments()}} examens trouvés</h4>
+  <table class="center" *ngIf="documentsService.getNbDocuments() !== 0">
+    <thead>
+      <!-- En-tête du tableau -->
+      <tr>
+        <th *ngFor="let head of headElements">{{ head }} </th>
+      </tr>
+    </thead>
+
+    <tbody *ngFor="let el of documentsService.cdaDocs">
+      <!-- Corps du tableau -->
+      <tr *ngIf="el.mimeType !== 'application/dicom'">
+        <td>
+          <button title="Déplier" *ngIf="!el.display && el.refKos.length > 1" (click)="documentsService.dispCda(el)" class="material-symbols-outlined dark">folder</button>
+          <button title="Replier" *ngIf="el.display" (click)="documentsService.dispCda(el)" class="material-symbols-outlined dark">folder_open</button>
+
+          <button title="Replier" *ngIf="el.refKos.length == 1 && el.refKos[0].kos.display " (click)="documentsService.td3_2(el.refKos[0].kos, 'serie')" class="material-symbols-outlined dark">arrow_drop_down</button>
+          <button title="Déplier" *ngIf="el.refKos.length == 1 && !el.refKos[0].kos.display" (click)="documentsService.td3_2(el.refKos[0].kos, 'serie')" class="material-symbols-outlined dark">arrow_right</button>
+
+          {{ el.description }}
+        </td>
+        <td>{{ el.dateExam }}</td>
+        <td class="buttonHide">
+          <button title="Visualiser" (click)="documentsService.openPdf(el)" class="material-symbols-outlined dark">preview</button>
+        </td>
+        <td class="buttonHide">
+          <button title="Importer" *ngIf="el.refKos.length != 0" (click)="documentsService.openFormStudy(el)" class="material-symbols-outlined dark">cloud_download</button>
+        </td>
+        <td class="buttonHide">
+          <button title="Visualiser" *ngIf="el.refKos.length != 0" (click)="documentsService.goToViewer(el.retrieveURL)" class="material-symbols-outlined dark">remove_red_eye</button>
+        </td>
+      </tr>
+
+      <tr *ngIf=" el.refKos.length == 1 && el.refKos[0].kos.display" style="background-color: #000000">
+        <td colspan=4>
+          <div class="divintab">
+            <table class="tabintab">
+              <tbody>
+                <tr *ngFor="let serie of el.refKos[0].kos.series" style="color:#000">
+                  <td>Serie : {{ serie.serieDescription}}</td>
+                  <td>{{ serie.serieModalite }}</td>
+
+                  <td class="buttonHide" style="color:#FFF">
+                    <button title="Importer" (click)="documentsService.openFormSerie(serie)" class="material-symbols-outlined dark">cloud_download</button>
+                  </td>
+                  <td class="buttonHide" style="color:#FFF">
+                    <button title="Visualiser" (click)="documentsService.goToViewer(serie.retrieveURL)" class="material-symbols-outlined dark">remove_red_eye</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </td>
+      </tr>
+
+
+      <tr *ngIf="el.display" style="background-color: #000000">
+        <td colspan=4>
+          <div class="divintab">
+            <table class="tabintab">
+              <tbody *ngFor="let study of el.refKos">
+                <tr style="color:#000">
+                  <td>
+                    <button title="Replier" *ngIf="study.kos.display" (click)="documentsService.td3_2(study.kos, 'serie')" class="material-symbols-outlined dark">arrow_drop_down</button>
+                    <button title="Déplier" *ngIf="!study.kos.display" (click)="documentsService.td3_2(study.kos, 'serie')" class="material-symbols-outlined dark">arrow_right</button>
+                    Examen : {{study.kos.description}}
+                  </td>
+                  <td>
+                    {{ study.kos.modalite}}
+                  </td>
+                  <td>
+                    {{study.kos.region}}
+                  </td>
+                  <td class="buttonHide">
+                    <button title="Importer" *ngIf="study.kos.refKos !== -1" (click)="documentsService.openFormStudy(study.kos)" class="material-symbols-outlined dark">cloud_download</button>
+                  </td>
+                  <td class="buttonHide">
+                    <button title="Visualiser" (click)="documentsService.goToViewer(study.kos.retrieveURL)" class="material-symbols-outlined dark">remove_red_eye</button>
+                  </td>
+                </tr>
+                <tr *ngIf="study.kos.display" style="background-color: #000000">
+                  <td colspan=4>
+                    <div class="divintab">
+                      <table class="tabintab">
+                        <tbody>
+                          <tr *ngFor="let serie of study.kos.series" style="color:#000">
+                            <td>Serie : {{ serie.serieDescription}}</td>
+                            <td>{{ serie.serieModalite }}</td>
+
+                            <td class="buttonHide" style="color:#FFF">
+                              <button title="Importer" (click)="documentsService.openFormSerie(serie)" class="material-symbols-outlined dark">cloud_download</button>
+                            </td>
+                            <td class="buttonHide" style="color:#FFF">
+                              <button title="Visualiser" (click)="documentsService.goToViewer(serie.retrieveURL)" class="material-symbols-outlined dark">remove_red_eye</button>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+
+

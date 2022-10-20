@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  # Drimbox
+  # Default address : http://localhost:8082
+  drimbox-source:
+    build:
+      context: ../..
+    ports:
+      - 8082:8081
+    environment:
+      DRIMBOX_MODE: source
+
+  # Sample DCM4CHE
+  # Default address : http://localhost:8012/dcm4chee-arc/ui2/
+  dcm4chee-ldap:
+      container_name: ldap
+      image: dcm4che/slapd-dcm4chee:2.4.57-23.2
+      networks:
+        - pacs_network
+
+  # DCM4CHEE uses this PostgreSQL database
+  dcm4chee-postgres:
+    container_name: pacspostgres
+    image: dcm4che/postgres-dcm4chee:13.1-23
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+    environment:
+      POSTGRES_DB: pacsdb 
+      POSTGRES_USER: pacs 
+      POSTGRES_PASSWORD: pacs
+    volumes:
+      - dcm4chee-db-data:/var/lib/postgresql/data
+    networks:
+      - pacs_network
+
+  # The main DCM4CHEE container
+  dcm4chee-arc:
+    image: dcm4che/dcm4chee-arc-psql:5.23.2
+    env_file: docker-compose.env
+    ports:
+      - "8012:8080"
+    environment:
+      POSTGRES_DB: pacsdb
+      POSTGRES_USER: pacs
+      POSTGRES_PASSWORD: pacs
+      STORAGE_DIR: /storage/fs1
+      POSTGRES_HOST: pacspostgres
+      WILDFLY_CHOWN: /storage /opt/wildfly/standalone
+      WILDFLY_WAIT_FOR: ldap:389 pacspostgres:5432
+      JAVA_OPTS: -Xms256m -Xmx1024m -XX:MetaspaceSize=960M -XX:MaxMetaspaceSize=2560m -Djava.net.preferIPv4Stack=true
+    depends_on:
+      - dcm4chee-ldap
+      - dcm4chee-postgres
+    volumes:
+      - dcm4chee-arc-wildfly:/opt/wildfly/standalone
+      - dcm4chee-arc-storage:/storage
+    networks:
+      - pacs_network
+
+
+volumes:
+  dcm4chee-db-data:
+  dcm4chee-arc-wildfly:
+  dcm4chee-arc-storage:
+
+networks:
+  pacs_network:
+    driver: bridge

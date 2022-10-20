@@ -1,0 +1,59 @@
+/*!
+ *  styles.scss - DRIMBox
+ *  Copyright 2022 b<>com
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/* You can add global styles to this file, and also import other style files */
+@import '@angular/material/prebuilt-themes/deeppurple-amber.css';
+
+
+body {
+  font-family: sans-serif;
+  text-shadow: 0px 0px 0px #000;
+}
+
+.topcorner {
+  position: absolute;
+  top: 5px;
+  right: 10px;
+}
+
+.mat-success {
+  background-color: green;
+  color: #fff;
+}
+
+.center {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Styles pour le conteneur de la forme */
+.form-container {
+  width: 350px;
+  padding: 20px;
+  background-color: #fff;
+}
+
+
+/* Masquez la forme Popup */
+.form-popup {
+  text-align: center;
+  position: fixed;
+  left: 45%;
+  top: 15%;
+  transform: translate(-45%, 15%);
+  border: 2px solid #666;
+}
