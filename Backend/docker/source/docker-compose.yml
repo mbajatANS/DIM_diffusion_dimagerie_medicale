@@ -41,7 +41,14 @@ services:
     image: dcm4che/dcm4chee-arc-psql:5.23.2
     env_file: docker-compose.env
     ports:
-      - "8012:8080"
+      - "8080:8080"
+      - "8443:8443"
+      - "9990:9990"
+      - "9993:9993"
+      - "11112:11112"
+      - "2762:2762"
+      - "2575:2575"
+      - "12575:12575"
     environment:
       POSTGRES_DB: pacsdb
       POSTGRES_USER: pacs

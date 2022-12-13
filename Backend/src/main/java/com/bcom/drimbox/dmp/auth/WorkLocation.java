@@ -47,9 +47,9 @@ public class WorkLocation {
 	@GET
 	public Response retrieveWorkLocations(@CookieParam("SessionToken") Cookie cookieSession) throws Exception {
 
-		if(cookieSession != null && webTokenAuth.getUsersMap().containsKey(cookieSession.getName())) {
+		if(cookieSession != null && webTokenAuth.clientRegistered(cookieSession.getValue())) {
 			String sectActivite;
-			JsonArray jArr = webTokenAuth.getUsersMap().get(cookieSession.getName()).getUserInfo().getJsonObject("SubjectRefPro").getJsonArray("exercices").getJsonObject(0).getJsonArray("activities");
+			JsonArray jArr = webTokenAuth.getUserInfo(cookieSession.getValue()).getJsonObject("SubjectRefPro").getJsonArray("exercices").getJsonObject(0).getJsonArray("activities");
 			StringBuilder sectActiviteBuilder = new StringBuilder();
 			for (int i = 0; i < jArr.size(); i++) {
 				sectActiviteBuilder.append("/").append(jArr.getJsonObject(i).getString("raisonSocialeSite"));
@@ -69,8 +69,7 @@ public class WorkLocation {
 	@Path("/location")
 	public Response setWorkLocation(@QueryParam("workLocation") String workLocation, @CookieParam("SessionToken") Cookie cookieSession) {
 
-		if(cookieSession != null && webTokenAuth.getUsersMap().containsKey(cookieSession.getName())) {		
-			webTokenAuth.getUsersMap().get(cookieSession.getName()).setSecteurActivite(workLocation);
+		if(cookieSession != null && webTokenAuth.setSecteurActivite(cookieSession.getValue(), workLocation)) {
 			return Response.ok("Success").build();
 		}
 

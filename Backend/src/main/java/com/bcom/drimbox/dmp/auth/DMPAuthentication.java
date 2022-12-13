@@ -41,17 +41,22 @@ import javax.ws.rs.core.Cookie;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
-import com.bcom.drimbox.psc.ProSanteConnect;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+
+import com.bcom.drimbox.DbMain;
+import com.bcom.drimbox.psc.ProSanteConnect;
 
 @Path("/api")
 public class DMPAuthentication {
 
 	@Inject
-    ProSanteConnect proSanteConnect;
+	ProSanteConnect proSanteConnect;
 
 	@Inject
 	WebTokenAuth webTokenAuth;
+
+	@Inject
+	DbMain dbMain;
 
 	@ConfigProperty(name = "quarkus.oidc.client-id")
 	String clientID;
@@ -80,17 +85,28 @@ public class DMPAuthentication {
 	@Produces(MediaType.TEXT_HTML)
 	public Response getLandingPage(@QueryParam("code") String code, @CookieParam("SessionToken") Cookie cookieSession, @QueryParam("state") String state) {
 
-		if(cookieSession != null && webTokenAuth.getUsersMap().containsKey(cookieSession.getName())) {
-			String cookieName = cookieSession.getName();
-			if(code != null && state != null && state.equals(webTokenAuth.getUsersMap().get(cookieName).getState().toString())) {
-				Boolean tokenCreated = proSanteConnect.createAuthToken(code, cookieName);
+		if (cookieSession != null) {
+			String cookieID = cookieSession.getValue();
+			if(webTokenAuth.clientRegistered(cookieID)) {
+				if(code != null && state != null && state.equals(webTokenAuth.getState(cookieID).toString())) {
+					Boolean tokenCreated = proSanteConnect.createAuthToken(code, cookieID);
 
-				if(!tokenCreated && webTokenAuth.getUsersMap().containsKey(cookieSession.getName()))
-					webTokenAuth.getUsersMap().remove(cookieSession.getName());
+					if(!tokenCreated && webTokenAuth.clientRegistered(cookieID))
+						webTokenAuth.removeClient(cookieID);
+				}
 			}
 		}
+
 		try {
-			URI uri = new URI(risHost + "/ris");
+			String url = "";
+			
+			if(dbMain.getTypeDrimbBOX() == DbMain.DrimBOXMode.SOURCE) {
+				url = risHost + "/IHEInvokeImageDisplay";
+			}
+			else if (dbMain.getTypeDrimbBOX() == DbMain.DrimBOXMode.CONSO) {
+				url = risHost + "/ris";
+			}
+			URI uri = new URI(url);
 			return Response.temporaryRedirect(uri).build();
 		} catch (URISyntaxException e) {
 			// TODO Auto-generated catch block
@@ -112,13 +128,17 @@ public class DMPAuthentication {
 		if (cookieSession == null)
 			return Response.serverError().build();
 
-		if(webTokenAuth.getUsersMap().containsKey(cookieSession.getName())) {
-			JsonObject temp = webTokenAuth.getUsersMap().get(cookieSession.getName()).getUserInfo().getJsonObject("SubjectRefPro").getJsonArray("exercices").getJsonObject(0);
+		String cookieID = cookieSession.getValue();
+
+		if(webTokenAuth.clientRegistered(cookieID)) {
+			JsonObject userInfo = webTokenAuth.getUserInfo(cookieID);
+
+			JsonObject temp = userInfo.getJsonObject("SubjectRefPro").getJsonArray("exercices").getJsonObject(0);
 			String name = temp.getString("prenomDexercice") + " " + temp.getString("nomDexercice");
-			Long epoch = webTokenAuth.getUsersMap().get(cookieSession.getName()).getAccessToken().getAuthTime();
+			Long epoch = webTokenAuth.getAccessToken(cookieID).getAuthTime();
 			String date = new java.text.SimpleDateFormat("MM/dd/yyyy HH:mm:ss").format(new java.util.Date (epoch*1000));
 
-			if(webTokenAuth.getUsersMap().get(cookieSession.getName()).getSecteurActivite() != "empty")
+			if(webTokenAuth.getSecteurActivite(cookieID)!= "empty")
 				return Response.ok("connected").build();
 
 			else
@@ -132,7 +152,7 @@ public class DMPAuthentication {
 			UserData authentServ = new UserData();
 			authentServ.setNonce(nonce);
 			authentServ.setState(state);
-			webTokenAuth.getUsersMap().put(cookieSession.getName(), authentServ);
+			webTokenAuth.registerClient(cookieID, authentServ);
 
 			String redirectURI = risHost + "/api";
 			var url = baseURL + "?response_type=" + responseType + "&client_id=" + clientID + "&redirect_uri=" + redirectURI + "&scope=openid " + scopes + "&acr_values=" + acrValues + "&state=" + state + "&nonce=" + nonce;

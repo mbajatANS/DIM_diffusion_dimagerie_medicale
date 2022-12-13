@@ -1,0 +1,18 @@
+
+/* Styles pour le conteneur de la forme */
+.form-container {
+  width: 350px;
+  padding: 20px;
+  background-color: #fff;
+}
+
+
+/* Masquez la forme Popup */
+.form-popup {
+  text-align: center;
+  position: fixed;
+  left: 45%;
+  top: 15%;
+  transform: translate(-45%, 15%);
+  border: 2px solid #666;
+}

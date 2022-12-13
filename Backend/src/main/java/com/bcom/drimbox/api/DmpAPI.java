@@ -111,24 +111,31 @@ public class DmpAPI {
 	 * @param request Request to make
 	 * @param ins Patient INS
 	 * @param cookieSession Cookie session gathered from the backend request. If null it will return a 401 error code.
-	 * @param byteArray response in byteArray format
 	 * @return DMP response with code 200 if all is going well. 401 if there is a failure in auth, 500 if VIHF could not be created.
 	 */
 	private Response dmpRequest(BaseRequest request, String ins, Cookie cookieSession, returnType returnObject) {
-		if(cookieSession != null && webTokenAuth.getUsersMap().containsKey(cookieSession.getName())) {
+		if(cookieSession != null) {
+			String cookieID = cookieSession.getValue();
 
-			Boolean result = request.createVIHF(webTokenAuth.getUsersMap().get(cookieSession.getName()).getUserInfo(), ins, webTokenAuth.getUsersMap().get(cookieSession.getName()).getSecteurActivite());
-			if (!result)
-				return Response.status(500).build();
-			
-			if(returnObject == returnType.STRING) {
-				DMPConnect.DMPResponse response = dmpConnect.sendRequest(request);
-				return Response.ok(response.message).build();
-			}
-			// To retrieve a file (cda or kos), we need to have it in byteArray format to not lose information
-			if(returnObject == returnType.RAWBYTES) {
-				DMPResponseBytes response = dmpConnect.sendKOSRequest(request);
-				return Response.ok(response.rawMessage).build();
+			if ( webTokenAuth.clientRegistered(cookieID)) {
+
+				Boolean result = request.createVIHF(
+						webTokenAuth.getUserInfo(cookieID),
+						ins,
+						webTokenAuth.getSecteurActivite(cookieID));
+
+				if (!result)
+					return Response.status(500).build();
+
+				if (returnObject == returnType.STRING) {
+					DMPConnect.DMPResponse response = dmpConnect.sendRequest(request);
+					return Response.ok(response.message).build();
+				}
+				// To retrieve a file (cda or kos), we need to have it in byteArray format to not lose information
+				if (returnObject == returnType.RAWBYTES) {
+					DMPResponseBytes response = dmpConnect.sendKOSRequest(request);
+					return Response.ok(response.rawMessage).build();
+				}
 			}
 		}
 

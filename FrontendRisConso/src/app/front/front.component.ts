@@ -38,6 +38,6 @@ export class FrontComponent {
    * Redirect to page with patient ins clicked
    * */
   goToUser() {
-    window.location.replace("http://localhost:4200/?ins=158019197706419");
+    window.location.replace("http://localhost:4200/?ins=248039263001064");
   }
 }

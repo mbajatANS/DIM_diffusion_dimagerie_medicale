@@ -1,0 +1,24 @@
+<div *ngIf="display === true">
+  <div class="form-popup">
+    <form class="form-container">
+      <h3>Veuillez choisir votre profil d'utilisateur : </h3>
+      <select style="height: 40px;">
+        <option selected disabled value="undefined">----</option>
+
+        <option>Professionel de santé</option>
+        <option>Patient</option>
+      </select>
+      <br />
+      <br />
+
+      <input type="checkbox" name="checkbox" [(ngModel)]="isChecked">
+      <label>
+        Se souvenir de mon choix
+      </label>
+
+      <br />
+      <br />
+      <button type="button" mat-raised-button color="success" (click)="redirectOnClick()">Choisir</button>
+    </form>
+  </div>
+</div>

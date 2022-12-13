@@ -174,7 +174,7 @@ export class DocumentsService {
       filterparam += `&stop=${stopDate}0000`;
     }
 
-    console.log(filterparam);
+ //   console.log(filterparam);
     this.http.get(`/api/query/${ins}?${filterparam.substr(1)}`, { responseType: 'text' }).subscribe(data => {
       this.parsing3_1Response(data);
     },
@@ -284,17 +284,18 @@ export class DocumentsService {
     let retri = '';
     // Retrieve accessionNumber
     for (const x of access) {
-      if (x.includes("1.2.3.4.5.6")) {
+      if (x.includes("accession")) {
         accessi = x.split("^")[0];
       }
     }
     // Retrieve retrieveUrl
     for (const y of retrieveUrl) {
-      if (y.includes("1.2.3.4&")) {
+      if (y.includes("studyInstanceUID")) {
         retri = y.split("^")[0];
-        console.log(retri);
+      //  console.log(retri);
       }
     }
+    console.log(accessi);
 
     // Add cda document
     if (mimeTypeValue === mimeTypeEnum.xml) {
@@ -334,12 +335,12 @@ export class DocumentsService {
       // Retrieve list of modality and regions from metadata
       metadataDoc.split("urn:uuid:2c6b8cb7-8b2a-4051-b291-b1ae6a575ef4").forEach(function (event) {
 
-        if (event.split("<ns4:Value>")[1].split("</ns4:Value>")[0] === "1.2.250.1.213.2.5" && modal.search(event.split("nodeRepresentation=\"")[1].split("\"")[0]) === -1) {
+        if (event.split("<ns4:Value>")[1].split("</ns4:Value>")[0] === "1.2.250.1.213.1.1.5.618" && modal.search(event.split("nodeRepresentation=\"")[1].split("\"")[0]) === -1) {
           modal += `et ${event.split("nodeRepresentation=\"")[1].split("\"")[0]}  `;
         }
 
-        else if (event.split("<ns4:Value>")[1].split("</ns4:Value>")[0] === "2.16.840.1.113883.6.3" && region.search(event.split("nodeRepresentation=\"")[1].split("\"")[0]) === -1) {
-          region += `et ${event.split("nodeRepresentation=\"")[1].split("\"")[0]}  `;
+        else if (event.split("<ns4:Value>")[1].split("</ns4:Value>")[0] === "1.2.250.1.213.1.1.5.695" && region.search(event.split(" value=\"")[1].split("\"")[0]) === -1) {
+          region += `et ${event.split("value=\"")[1].split("\"")[0]}  `;
         }
 
       });
@@ -455,7 +456,7 @@ export class DocumentsService {
             nbImages: serie.dataSet.elements['x00081199'].items.length,
             serieModalite: desc.split(serie.dataSet.string('x0020000e') + ' :')[1].split(' : ')[0],
             serieLocation: 'Tête',
-            retrieveURL: doc.retrieveURL
+            retrieveURL: serie.dataSet.string('x00081190')
           });
         }, this);
       }
@@ -507,12 +508,14 @@ export class DocumentsService {
   goToViewer(retrieveURL) {
     // Need this to get auth ohif beforehand (transmit the cookie value to the backend)
     // TODO : Change this and pass the cookie to the OHIF metadata (see backend for details)
-    const urlRetrieve = retrieveURL;
+    let urlRetrieve = retrieveURL;
 
     const drimboxConso = "localhost:8081";
-    const drimboxSource = "localhost:8082";
+    const drimboxSource = "10.53.0.72:8082";
     const viewerURL = "localhost:3000";
-
+    if (retrieveURL.includes("series")) {
+      urlRetrieve = retrieveURL.split("/studies/")[1].split("/series")[0];
+    }
     window.open(`http://${viewerURL}/viewer?url=http://${drimboxConso}/ohifmetadata/${drimboxSource}&studyInstanceUIDs=${urlRetrieve}`, '_blank');
     //window.open(`http://${viewerURL}/viewer?url=${urlRetrieve}`, '_blank');
   }
@@ -521,11 +524,12 @@ export class DocumentsService {
    * Call backend to import study/serie to local pacs
    * */
   ImportStow() {
+    const drimboxSource = "10.53.0.72:8082";
     if (!this.openImportSerie) {
-      this.http.get(`/api/stow?studyUID=${this.studyInstanceLocal}`).subscribe(data => console.log("data"));
+      this.http.get(`/api/stow/${drimboxSource}?studyUID=${this.studyInstanceLocal}`).subscribe(data => console.log("data"));
     }
     else {
-      this.http.get(`/api/stow?studyUID=${this.studyInstanceLocal}&serieUID=${this.serieInstanceLocal}`).subscribe(data => console.log("data"));
+      this.http.get(`/api/stow/${drimboxSource}?studyUID=${this.studyInstanceLocal}&serieUID=${this.serieInstanceLocal}`).subscribe(data => console.log("data"));
     }
   }
 

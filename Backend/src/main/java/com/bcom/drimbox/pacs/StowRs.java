@@ -25,24 +25,22 @@
 
 package com.bcom.drimbox.pacs;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import javax.inject.Inject;
 import javax.ws.rs.Path;
 import javax.ws.rs.QueryParam;
 
-import org.dcm4che3.util.StreamUtils;
+import org.dcm4che3.data.UID;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+
+import com.bcom.drimbox.api.DRIMboxConsoAPI;
+import com.bcom.drimbox.utils.PrefixConstants;
 
 import io.quarkus.logging.Log;
 
@@ -50,8 +48,11 @@ import io.quarkus.logging.Log;
 public class StowRs {
 
 	// Stow url (e.g. http://localhost:8080/dcm4chee-arc/aets/DCM4CHEE/rs/studies)
-	@ConfigProperty(name = "pacs.stowUrl")
-	String stowUrl;
+	@ConfigProperty(name = "pacs.stow")
+	String stowSuffix;
+
+	@ConfigProperty(name = "pacs.baseUrl")
+	String baseUrl;
 
 	// Cache of instance datas
 	@Inject PacsCache pacsCache;
@@ -59,36 +60,53 @@ public class StowRs {
 	// Boundary for multipart request
 	private static final String BOUNDARY = "myBoundary";
 
+	public byte[] rawMessage;
 
+	private String getStowUrl() {
+		return baseUrl + "/" + stowSuffix;
+	}
 	/**
 	 * 
 	 * @param studyUID for the study to stow
 	 * @param serieUID if present to only stow this serie
 	 * @throws Exception
 	 */
-	@Path("/stow")
-	public void stow(@QueryParam("studyUID") String studyUID, @QueryParam("serieUID") String serieUID) throws Exception {
+	@Path("/stow/{drimboxSourceURL}")
+	public void stow(String drimboxSourceURL, @QueryParam("studyUID") String studyUID, @QueryParam("serieUID") String serieUID) throws Exception {
 
-		// List of instances from the study to stow
-		List<byte[]> listFiles = new ArrayList<>();
+		try {
+			// Map of transfersStyntaxes and q paramaters associated
+			Map<String, String> transferSyntaxes = Map.of(UID.JPEGLosslessSV1, "0.9",
+					UID.JPEGLSLossless, "0.8",
+					UID.RLELossless, "0.6",
+					UID.JPEGBaseline8Bit, "0.5",
+					UID.JPEGExtended12Bit, "0.5",
+					UID.MPEG2MPML, "0.5",
+					UID.MPEG2MPHL, "0.5",
+					UID.MPEG4HP41, "0.5",
+					UID.MPEG4HP41BD, "0.5",
+					UID.ExplicitVRLittleEndian, "0.4");
+			// Db source URL to ask study 
+			String serviceURL = DRIMboxConsoAPI.HTTP_PROTOCOL + drimboxSourceURL + "/" + PrefixConstants.DRIMBOX_PREFIX + "/" + PrefixConstants.STUDIES_PREFIX + "/" + studyUID + "/series/" + serieUID;
+			final URL url = new URL(serviceURL);
+			final HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+		    for (Map.Entry<String, String> entry : transferSyntaxes.entrySet()) {
+				connection.addRequestProperty("Accept", "multipart/related; type=\"application/dicom\";transfer-syntax="+entry.getKey()+";q="+entry.getValue()+";boundary="+ BOUNDARY);
+		    }
 
-		// If serieUID and studyUID in url and exist on cache, load only instances from the serie given
-		if(serieUID != null && studyUID != null && pacsCache.dicomCache.get(studyUID).get(serieUID) != null) {
-
-			pacsCache.dicomCache.get(studyUID).get(serieUID).dicomFiles.forEach((instance, valueByte) 
-					-> listFiles.add(valueByte));
+			if (connection.getResponseCode() == 200) {
+				// Retrieve multipart of serie asked to Db source
+				rawMessage = connection.getInputStream().readAllBytes();
+			}
 		}
-
-		// studyUID in url and exist on cache, load all instances from the study given
-		else if(studyUID != null && pacsCache.dicomCache.get(studyUID) != null) {
-			pacsCache.dicomCache.get(studyUID).forEach((serie,dicomCacheInstance)
-					-> dicomCacheInstance.dicomFiles.forEach((instance, valueByte) 
-							-> listFiles.add(valueByte)));
+		catch (Exception e) {
+			throw new RuntimeException(e);
 		}
+		//		}	
 
 
 		// Open connection with Pacs
-		URLConnection urlConnection = new URL(stowUrl).openConnection();
+		URLConnection urlConnection = new URL(getStowUrl()).openConnection();
 		final HttpURLConnection connection = (HttpURLConnection) urlConnection;
 
 		// Initialize header parameters
@@ -101,25 +119,9 @@ public class StowRs {
 		requestProperties.put("Accept", "application/dicom+json");
 		requestProperties.put("Connection", "keep-alive");
 		requestProperties.forEach(connection::setRequestProperty);
-
 		try (OutputStream out = connection.getOutputStream()) {
-			// Creating multipart request with all instance datas
-			for (int i = 0; i < listFiles.size(); i++) {
-				InputStream targetStream = new ByteArrayInputStream(listFiles.get(i));
-				try {
-					if (i != 0) {
-						out.write(("\r\n").getBytes());
-					}
-					out.write(("--" + BOUNDARY + "\r\nContent-Disposition: form-data;name=\"file\";filename=\"IM-0001-000" + i + ".dcm\"\r\n"
-							+ "Content-Type: application/dicom\r\n\r\n").getBytes());
-					StreamUtils.copy(targetStream, out);
-					if (i == listFiles.size() - 1)
-						out.write(("\r\n--" + BOUNDARY + "--").getBytes());
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					throw new RuntimeException(e);
-				}
-			}
+			// Write series retrieved from Db source
+			out.write(rawMessage);
 
 			out.flush();
 			Log.info(connection.getResponseMessage());

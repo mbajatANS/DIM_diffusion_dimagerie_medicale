@@ -28,14 +28,15 @@ package com.bcom.drimbox.pacs;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
+import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
+import javax.inject.Inject;
 import javax.inject.Singleton;
 
-import org.apache.commons.fileupload.MultipartStream;
 import org.dcm4che3.data.Attributes;
 import org.dcm4che3.data.Tag;
 import org.dcm4che3.io.DicomOutputStream;
@@ -52,39 +53,53 @@ import org.dcm4che3.net.service.BasicCStoreSCP;
 import org.dcm4che3.net.service.DicomServiceRegistry;
 import org.dcm4che3.util.StreamUtils;
 
+import io.smallrye.mutiny.Multi;
+import io.vertx.mutiny.core.eventbus.EventBus;
+
 @Singleton
 public class CStoreSCP {
+	// Current index of multipart request
+	private static final int BASE_INDEX = 1;
+	// Vertx event bus address sent when all the images are received
+	public static final String EB_DONE_ADDRESS = "done";
+	// Vertx event bus address sent when an image is received
+	public static final String EB_IMAGE_ADDRESS = "image";
+
+
 	private Device device;
-	private int currentID = 1;
-	private ByteArrayOutputStream output;
-	// Boundary for multipart request
-	private static final String BOUNDARY = "myBoundary";
+	private int currentID = BASE_INDEX;
 
 	private String host;
 	private String aet;
+	
+	private String boundary;
+	
+	private ApplicationEntity ae;
+
+	@Inject
+	EventBus eventBus;
+
+
 
 	public void startCStore(String calledAET, String bindAddress, int port) throws Exception {
 		this.host = bindAddress;
 		this.aet = calledAET;
-
-		this.output = new ByteArrayOutputStream();
 
 		ScheduledExecutorService scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
 		ExecutorService executor = Executors.newCachedThreadPool();
 
 
 		device = new Device("c-echo-scp");
-		ApplicationEntity ae = new ApplicationEntity(calledAET);
+		this.ae = new ApplicationEntity(calledAET);
 		Connection conn = new Connection(null, "127.0.0.1", port);
 		conn.setBindAddress(bindAddress);
 		// enable Asynchronous Operations
 		conn.setMaxOpsInvoked(0);
 		conn.setMaxOpsPerformed(0);
-		device.addApplicationEntity(ae);
+		device.addApplicationEntity(this.ae);
 		device.addConnection(conn);
-		ae.addConnection(conn);
-		ae.addTransferCapability(new TransferCapability(null,
-				"*", TransferCapability.Role.SCP, "*"));
+		this.ae.addConnection(conn);
+
 		device.setDimseRQHandler(createServiceRegistry());
 
 
@@ -119,16 +134,47 @@ public class CStoreSCP {
 		return serviceRegistry;
 	}
 
-	public byte[] getMultipartGlobal() throws Exception {
+	public void done() {
+		eventBus.publish(EB_DONE_ADDRESS, true);
+	}
 
-		 this.output.write(("--" + BOUNDARY + "--").getBytes());
-		 return this.output.toByteArray();
+
+	public Multi<byte[]> getResponseStream() {
+		return Multi.createFrom().emitter( em -> {
+			// Emit a new image when received
+			eventBus.consumer(EB_IMAGE_ADDRESS).handler(m-> {
+				em.emit((byte[]) m.body());
+			});
+
+			// Mark the end of the stream
+			eventBus.consumer(EB_DONE_ADDRESS).handler(m-> {
+				em.emit(("--" + this.boundary + "--").getBytes());
+				em.complete();
+			});
+		});
 	}
 	
 	public void resetMultipart() {
-		this.output.reset();
-		this.currentID = 1;
+		this.currentID = BASE_INDEX;
 	}
+	
+	public void setBoundary(String boundary) {
+		this.boundary = boundary;
+	}
+	
+	public void resetTransferSyntaxes(List<String> transferSyntaxs) {
+		
+		  String[] str = new String[transferSyntaxs.size()];
+		  
+	        for (int i = 0; i < transferSyntaxs.size(); i++) {
+	            str[i] = transferSyntaxs.get(i);
+	        }
+	        
+
+		this.ae.removeTransferCapabilityFor("*", TransferCapability.Role.SCP);		
+		this.ae.addTransferCapability(new TransferCapability(null,
+				"*", TransferCapability.Role.SCP, str));
+		}
 
 	private void store(Association as, PresentationContext pc, Attributes rq, PDVInputStream data)
 			throws IOException {
@@ -136,14 +182,22 @@ public class CStoreSCP {
 		String iuid = rq.getString(Tag.AffectedSOPInstanceUID);
 		String tsuid = pc.getTransferSyntax();
 		Attributes fmi = as.createFileMetaInformation(iuid, cuid, tsuid);
-		this.output.write(("--" + BOUNDARY + "\r\nContent-ID: <"+ currentID +"@resteasy-multipart>\r\nContent-Type: application/dicom;transfer-syntax=1.2.840.10008.1.2.1\r\n\r\n").getBytes());
 
-		try (DicomOutputStream dos = new DicomOutputStream(this.output, tsuid)) {
+		ByteArrayOutputStream output = new ByteArrayOutputStream();
+		output.write(("--" + this.boundary + "\r\nContent-ID: <"+ currentID +"@resteasy-multipart>\r\nContent-Type: application/dicom;transfer-syntax=1.2.840.10008.1.2.1\r\n\r\n").getBytes());
+
+		try (DicomOutputStream dos = new DicomOutputStream(output, tsuid)) {
 			dos.writeFileMetaInformation(fmi);
 			StreamUtils.copy(data, dos);
-		}	
-		this.output.write(data.readAllBytes());
-		this.output.write(("\r\n").getBytes());
+		}
+
+		output.write(data.readAllBytes());
+		output.write(("\r\n").getBytes());
+		output.flush();
+
+		// Tell vertx we have a new image
+		eventBus.publish(EB_IMAGE_ADDRESS, output.toByteArray());
+
 		currentID++;
 
 	}

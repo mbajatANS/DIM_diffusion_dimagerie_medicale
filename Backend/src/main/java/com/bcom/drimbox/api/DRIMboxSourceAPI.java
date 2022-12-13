@@ -32,6 +32,8 @@ import static com.bcom.drimbox.utils.PrefixConstants.STUDIES_PREFIX;
 
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
 
 import javax.inject.Inject;
 import javax.ws.rs.GET;
@@ -39,23 +41,28 @@ import javax.ws.rs.HeaderParam;
 import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
 import javax.ws.rs.core.Context;
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.UriInfo;
 
-import com.bcom.drimbox.psc.ProSanteConnect;
-import com.bcom.drimbox.utils.RequestHelper;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.resteasy.reactive.RestResponse;
+
+import com.bcom.drimbox.pacs.CStoreSCP;
+import com.bcom.drimbox.psc.ProSanteConnect;
+import com.bcom.drimbox.utils.RequestHelper;
+
+import io.smallrye.mutiny.Multi;
 
 
 @Path("/" + DRIMBOX_PREFIX)
 public class DRIMboxSourceAPI {
+	@ConfigProperty(name = "pacs.wado")
+	String wadoSuffix;
+	@ConfigProperty(name = "pacs.wadoURI")
+	String wadoURISuffix;
 
-	// Wado url (e.g. http://localhost:8080/dcm4chee-arc/aets/AS_RECEIVED/rs)
-	@ConfigProperty(name = "pacs.wadoUrl")
-	String wadoUrl;
-	// Wado URI url (e.g. http://localhost:8080/dcm4chee-arc/aets/AS_RECEIVED/wado)
-	@ConfigProperty(name = "pacs.wadoURIUrl")
-	String wadoURIUrl;
+	@ConfigProperty(name = "pacs.baseUrl")
+	String pacsUrl;
 
 	@ConfigProperty(name = "debug.noAuth", defaultValue="false")
 	Boolean noAuth;
@@ -63,6 +70,9 @@ public class DRIMboxSourceAPI {
 
 	@Inject
 	RequestHelper requestHelper;
+	
+	@Inject
+	CStoreSCP cstoreSCP;
 
 	/**
 	 * Bearer token that is in the request. It will be verified with the instropection mechanism of prosanteconnect
@@ -75,19 +85,29 @@ public class DRIMboxSourceAPI {
 	@Inject
 	ProSanteConnect proSanteConnect;
 
+
 	@GET
 	@Path("/studies/{studyUID}/series/{seriesUID}")
-	public RestResponse<byte[]> drimboxMultipartWado(String studyUID, String seriesUID) {
-		String url = wadoUrl + "/" + STUDIES_PREFIX + "/" + studyUID + "/" + SERIES_PREFIX + "/" + seriesUID;
+	@Produces("multipart/related;start=\\\"<1@resteasy-multipart>\\\";transfer-syntax=1.2.840.10008.1.2.1;type=\\\"application/dicom\\\"; boundary=myBoundary")
+	public Multi<byte[]> drimboxMultipartWado(String studyUID, String seriesUID, @Context HttpHeaders headers) {
+		String url = getWadoUrl() + "/" + STUDIES_PREFIX + "/" + studyUID + "/" + SERIES_PREFIX + "/" + seriesUID;
+
+		List<String> transferSyntaxes = new ArrayList<String>();
+		for (String header : headers.getRequestHeaders().get("Accept")) {
+
+			transferSyntaxes.add(header.split("transfer-syntax=")[1].split(";")[0]);
+		}
+		String boundary = headers.getRequestHeaders().get("Accept").get(0).split("boundary=")[1];
+		cstoreSCP.setBoundary(boundary);
 		
-		return requestHelper.fileRequestCMove(url);
+		return requestHelper.fileRequestCMove(url, transferSyntaxes);
 	}
 
 	@GET
 	@Path("/studies/{studyUID}/series/{seriesUID}/metadata")
 	@Produces("application/dicom+json")
 	public RestResponse<String> drimboxMetadataRequest(String studyUID, String seriesUID) {
-		String url = wadoUrl + "/" + STUDIES_PREFIX +"/" + studyUID + "/" + SERIES_PREFIX + "/" + seriesUID + "/" + METADATA_PREFIX;
+		String url = getWadoUrl() + "/" + STUDIES_PREFIX +"/" + studyUID + "/" + SERIES_PREFIX + "/" + seriesUID + "/" + METADATA_PREFIX;
 
 		return requestHelper.stringRequest(url, this::getPacsConnection);
 	}
@@ -96,7 +116,7 @@ public class DRIMboxSourceAPI {
 	@Path("/studies/{studyUID}/series")
 	@Produces("application/dicom+json")
 	public RestResponse<String> drimboxSeriesRequest(String studyUID) {
-		String url = wadoUrl + "/" + STUDIES_PREFIX + "/" + studyUID + "/" + SERIES_PREFIX;
+		String url = getWadoUrl() + "/" + STUDIES_PREFIX + "/" + studyUID + "/" + SERIES_PREFIX;
 
 		return requestHelper.stringRequest(url, this::getPacsConnection);
 	}
@@ -105,7 +125,7 @@ public class DRIMboxSourceAPI {
 	@Path("/wado")
 	@Produces("application/dicom")
 	public RestResponse<byte[]> drimboxWadoURI(@Context UriInfo uriInfo) {
-		String url = requestHelper.constructUrlWithParam(wadoURIUrl, uriInfo);
+		String url = requestHelper.constructUrlWithParam(getWadoURIUrl(), uriInfo);
 
 		return requestHelper.fileRequest(url, this::getPacsConnection);
 	}
@@ -115,7 +135,7 @@ public class DRIMboxSourceAPI {
 	private HttpURLConnection getPacsConnection(String pacsUrl) throws Exception {
 		final URL url = new URL(pacsUrl);
 
-		if (noAuth && (bearerToken.isEmpty() || !proSanteConnect.introspectToken(bearerToken))) {
+		if (!noAuth && (bearerToken.isEmpty() || !proSanteConnect.introspectToken(bearerToken))) {
 			throw new Exception("Authentication failure");
 		}
 
@@ -128,6 +148,15 @@ public class DRIMboxSourceAPI {
 
 
 		return connection;
+	}
+
+	// Get wado url (e.g. http://localhost:8080/dcm4chee-arc/aets/AS_RECEIVED/rs)
+	private String getWadoUrl() {
+		return pacsUrl + "/" + wadoSuffix;
+	}
+	// Get wado URI url (e.g. http://localhost:8080/dcm4chee-arc/aets/AS_RECEIVED/wado)
+	private String getWadoURIUrl() {
+		return pacsUrl + "/" + wadoURISuffix;
 	}
 
 

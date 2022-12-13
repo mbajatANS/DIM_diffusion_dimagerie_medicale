@@ -36,9 +36,6 @@ import javax.json.Json;
 import javax.json.JsonObject;
 import javax.json.JsonReader;
 
-import com.bcom.drimbox.psc.tokens.AccessToken;
-import com.bcom.drimbox.psc.tokens.IdToken;
-import com.bcom.drimbox.psc.tokens.RefreshToken;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpHeaders;
 import org.apache.http.HttpResponse;
@@ -48,8 +45,12 @@ import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.message.BasicNameValuePair;
-import com.bcom.drimbox.dmp.auth.WebTokenAuth;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+
+import com.bcom.drimbox.dmp.auth.WebTokenAuth;
+import com.bcom.drimbox.psc.tokens.AccessToken;
+import com.bcom.drimbox.psc.tokens.IdToken;
+import com.bcom.drimbox.psc.tokens.RefreshToken;
 
 import io.quarkus.logging.Log;
 
@@ -143,7 +144,7 @@ public class ProSanteConnect {
 	 *
 	 * @return True if success, false otherwise
 	 */
-	public Boolean createAuthToken(String code, String cookie) {
+	public Boolean createAuthToken(String code, String cookieID) {
 		try {
 			HttpClient httpclient = HttpClients.createDefault();
 			HttpPost httppost = new HttpPost(baseURL + "token");
@@ -185,14 +186,14 @@ public class ProSanteConnect {
 						return false;
 					}
 
-					String nonce = webTokenAuth.getUsersMap().get(cookie).getNonce().toString();
+					String nonce = webTokenAuth.getNonce(cookieID).toString();
 
 					if(nonce.equals(accessToken.getNonce()) && nonce.equals(idToken.getNonce())) {
-						webTokenAuth.getUsersMap().get(cookie).setAccessToken(accessToken);
-						webTokenAuth.getUsersMap().get(cookie).setIdToken(idToken);
-						webTokenAuth.getUsersMap().get(cookie).setRefreshToken(refreshToken);
-						webTokenAuth.getUsersMap().get(cookie).setUserInfo(getUserInfo(rawAccessToken));
-						webTokenAuth.getUsersMap().get(cookie).setSecteurActivite("empty");
+						webTokenAuth.setAccessToken(cookieID, accessToken);
+						webTokenAuth.setIdToken(cookieID, idToken);
+						webTokenAuth.setRefreshToken(cookieID, refreshToken);
+						webTokenAuth.setUserInfo(cookieID, getUserInfo(rawAccessToken));
+						webTokenAuth.setSecteurActivite(cookieID, "empty");
 						return true;
 					}
 				}

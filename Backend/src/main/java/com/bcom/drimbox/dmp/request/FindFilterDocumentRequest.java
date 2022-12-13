@@ -66,13 +66,13 @@ public class FindFilterDocumentRequest extends BaseRequest {
 
 		if(!modalities.isEmpty()) {
 			modalities.forEach(modality 
-					-> 			modal += "'" + modality + "^^1.2.250.1.213.2.5',");
+					-> 			modal += "'" + modality + "^^1.2.250.1.213.1.1.5.618',");
 			createSlot(pAdhocQuery,"$XDSDocumentEntryEventCodeList", "(" + modal.substring(0, modal.length() - 1) + ")");
 		}
 
 		if(!regions.isEmpty()) {
 			regions.forEach(region 
-					-> 			regionOR += "'" + region + "^^2.16.840.1.113883.6.3',");
+					-> 			regionOR += "'" + region + "^^1.2.250.1.213.1.1.5.695',");
 			createSlot(pAdhocQuery,"$XDSDocumentEntryEventCodeList", "(" + regionOR.substring(0, regionOR.length() - 1) + ")");
 		}
 		

@@ -25,25 +25,141 @@
 
 package com.bcom.drimbox.dmp.auth;
 
+import com.bcom.drimbox.psc.tokens.AccessToken;
+import com.bcom.drimbox.psc.tokens.IdToken;
+import com.bcom.drimbox.psc.tokens.RefreshToken;
+
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 import javax.inject.Singleton;
+import javax.json.JsonObject;
+
 
 @Singleton
 public class WebTokenAuth {
 
 	private Map<String, UserData> usersMap;
 
+
 	WebTokenAuth(){
-		this.setUsersMap(new HashMap<>());
+		usersMap = new HashMap<>();
 	}
 
-	public Map<String, UserData> getUsersMap() {
-		return usersMap;
+	/***
+	 * Return the status of registration.
+	 * This function doesn't check if the tokens are valid, only is the client is registered.
+	 *
+	 * @param cookieID Cookie ID from front end
+	 *
+	 * @return true if cookie ID is currently registered false otherwise
+	 */
+	public boolean clientRegistered(String cookieID) {
+		return usersMap.containsKey(cookieID);
 	}
 
-	public void setUsersMap(Map<String, UserData> usersMap) {
-		this.usersMap = usersMap;
+	public UUID getState(String cookieID) {
+		if (!clientRegistered(cookieID))
+			return null;
+
+		return usersMap.get(cookieID).getState();
 	}
+
+	public UUID getNonce(String cookieID) {
+		if (!clientRegistered(cookieID))
+			return null;
+
+		return usersMap.get(cookieID).getNonce();
+	}
+
+	public JsonObject getUserInfo(String cookieID) {
+		if (!clientRegistered(cookieID))
+			return null;
+
+		return usersMap.get(cookieID).getUserInfo();
+	}
+
+	public String getSecteurActivite(String cookieID) {
+		if (!clientRegistered(cookieID))
+			return null;
+
+		return usersMap.get(cookieID).getSecteurActivite();
+	}
+
+	/***
+	 * Set secteur activite
+	 * @param cookieID Cookie ID from front end
+	 * @param secteurActivite Secteur activite to set
+	 * @return True if success, false otherwise
+	 */
+	public boolean setSecteurActivite(String cookieID, String secteurActivite) {
+		if (!clientRegistered(cookieID))
+			return false;
+
+		usersMap.get(cookieID).setSecteurActivite(secteurActivite);
+		return true;
+	}
+
+	public boolean setUserInfo(String cookieID, JsonObject userInfo) {
+		if (!clientRegistered(cookieID))
+			return false;
+
+		usersMap.get(cookieID).setUserInfo(userInfo);
+		return true;
+	}
+
+	public boolean setRefreshToken(String cookieID, RefreshToken refreshToken) {
+		if (!clientRegistered(cookieID))
+			return false;
+
+		usersMap.get(cookieID).setRefreshToken(refreshToken);
+		return true;
+	}
+
+	public boolean setIdToken(String cookieID, IdToken idToken) {
+		if (!clientRegistered(cookieID))
+			return false;
+
+		usersMap.get(cookieID).setIdToken(idToken);
+		return true;
+	}
+
+	public boolean setAccessToken(String cookieID, AccessToken accessToken) {
+		if (!clientRegistered(cookieID))
+			return false;
+
+		usersMap.get(cookieID).setAccessToken(accessToken);
+		return true;
+	}
+
+
+	public AccessToken getAccessToken(String cookieID) {
+		if (!clientRegistered(cookieID))
+			return null;
+
+		return usersMap.get(cookieID).getAccessToken();
+	}
+
+	/***
+	 * Register new client
+	 * @param cookieID Cookie ID from frontend
+	 * @param data Userdata that includes all the tokens
+	 * @return True if success, false otherwise
+	 */
+	public boolean registerClient(String cookieID, UserData data) {
+		if (clientRegistered(cookieID))
+			return false;
+
+		usersMap.put(cookieID, data);
+
+		return true;
+	}
+
+
+	public void removeClient(String cookieID) {
+		usersMap.remove(cookieID);
+	}
+
+
 }

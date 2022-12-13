@@ -43,6 +43,7 @@ import com.bcom.drimbox.api.DRIMboxConsoAPI;
 import com.bcom.drimbox.utils.PrefixConstants;
 import org.dcm4che3.data.Attributes;
 import org.dcm4che3.data.Tag;
+import org.dcm4che3.data.UID;
 import org.dcm4che3.io.DicomInputStream;
 import org.dcm4che3.mime.MultipartInputStream;
 import org.dcm4che3.mime.MultipartParser;
@@ -68,7 +69,10 @@ public class PacsCache {
 	//  - SeriesUID
 	//  - SeriesUID
 	Map<String, Map<String, DicomCacheInstance>> dicomCache = new HashMap<>();
-
+	
+	// Boundary for multipart request
+	private static final String BOUNDARY = "myBoundary";
+	
 	private final Vertx vertx;
 
 	@Inject
@@ -98,12 +102,12 @@ public class PacsCache {
 
 			Map<String, DicomCacheInstance> map = new HashMap<>();
 			map.put(seriesUID, new DicomCacheInstance());
-			
+
 			if(dicomCache.containsKey(studyUID)) {
 				dicomCache.get(studyUID).put(seriesUID, new DicomCacheInstance());
 			}
 			else {
-			dicomCache.put(studyUID, map);
+				dicomCache.put(studyUID, map);
 			}
 			buildEntry(drimboxSourceURL, studyUID, seriesUID);
 
@@ -145,12 +149,12 @@ public class PacsCache {
 		} else {
 			Log.info("[CACHE] Waiting for : " + instanceUID);
 			waitingFutures.put(instanceUID, completableFuture);
-//			vertx.eventBus().consumer(instanceUID).handler( m-> {
-//				Log.info("[CACHE] Sending image : " + instanceUID);
-//				completableFuture.complete((byte[]) m.body());
-//			}
-//					);
-//
+			//			vertx.eventBus().consumer(instanceUID).handler( m-> {
+			//				Log.info("[CACHE] Sending image : " + instanceUID);
+			//				completableFuture.complete((byte[]) m.body());
+			//			}
+			//					);
+			//
 		}
 
 		return completableFuture;
@@ -161,8 +165,21 @@ public class PacsCache {
 		String serviceURL = DRIMboxConsoAPI.HTTP_PROTOCOL + drimboxSourceURL + "/" + PrefixConstants.DRIMBOX_PREFIX + "/" + PrefixConstants.STUDIES_PREFIX + "/" + studyUID + "/series/" + seriesUID;
 		//String serviceURL = "http://localhost:8081/dcm4chee-arc/aets/AS_RECEIVED/rs"  + "/" + STUDIES_PREFIX + "/" + studyUID + "/series/" + seriesUID;
 		try {
+			Map<String, String> transferSyntaxes = Map.of(UID.JPEGBaseline8Bit, "0.9",
+					UID.JPEGExtended12Bit, "0.9",
+					UID.JPEGLosslessSV1, "0.6",
+					UID.JPEGLSLossless, "0.5",
+					UID.RLELossless, "0.5",
+					UID.MPEG2MPML, "0.5",
+					UID.MPEG2MPHL, "0.5",
+					UID.MPEG4HP41, "0.5",
+					UID.MPEG4HP41BD, "0.5",
+					UID.ExplicitVRLittleEndian, "0.4");
 			final URL url = new URL(serviceURL);
 			final HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+		    for (Map.Entry<String, String> entry : transferSyntaxes.entrySet()) {
+				connection.addRequestProperty("Accept", "multipart/related; type=\"application/dicom\";transfer-syntax="+entry.getKey()+";q="+entry.getValue()+";boundary=" + BOUNDARY);
+		    }
 
 			BoundaryFunc boundaryManager = (String contentType) -> {
 				String[] respContentTypeParams = contentType.split(";");
@@ -181,8 +198,6 @@ public class PacsCache {
 				throw new RuntimeException();
 			}
 
-
-
 			DicomCacheInstance dc = getCacheInstance(studyUID, seriesUID);
 
 			new MultipartParser(boundary).parse(new BufferedInputStream(connection.getInputStream()), new MultipartParser.Handler() {
@@ -195,11 +210,11 @@ public class PacsCache {
 						Attributes dataSet = dis.readDataset();
 						String instanceUID = dataSet.getString(Tag.SOPInstanceUID);
 
-						//Log.info("Received file " + instanceUID);
+						//Log.info("[CACHE] Received file " + instanceUID);
 						dc.dicomFiles.put(instanceUID, rawDicomFile);
 
 						if (waitingFutures.containsKey(instanceUID)) {
-							Log.info("[CACHE] Publish file " + instanceUID);
+							//Log.info("[CACHE] Publish file " + instanceUID);
 							waitingFutures.get(instanceUID).complete(rawDicomFile);
 							waitingFutures.remove(instanceUID);
 						}
@@ -211,6 +226,7 @@ public class PacsCache {
 			});
 
 			dc.complete = true;
+			Log.info("[CACHE] Complete");
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		}

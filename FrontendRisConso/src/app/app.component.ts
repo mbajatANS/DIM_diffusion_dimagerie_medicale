@@ -62,8 +62,6 @@ export class AppComponent {
 
     this.route.queryParams.subscribe(params => {
       // Generate sessionToken
-      console.log("qsdf");
-      console.log(cookieService.check("SessionToken"));
       if (!cookieService.check("SessionToken")) {
         const uuid = this.generateUUID();
         this.cookieService.set("SessionToken", uuid);

@@ -29,6 +29,7 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.stream.Collectors;
 
 import javax.inject.Inject;
@@ -36,10 +37,12 @@ import javax.inject.Singleton;
 import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.UriInfo;
 
-import com.bcom.drimbox.pacs.CMoveSCU;
 import org.jboss.resteasy.reactive.RestResponse;
 
+import com.bcom.drimbox.pacs.CMoveSCU;
+
 import io.quarkus.logging.Log;
+import io.smallrye.mutiny.Multi;
 
 @Singleton
 public class RequestHelper {
@@ -141,9 +144,15 @@ public class RequestHelper {
 			connection.disconnect();
 			return response;
 		} catch (Exception e) {
-			Log.fatal("Error while doing string request " + e.getMessage());
+			logError("string request", pacsUrl, e.getMessage());
 			return getDeniedStringResponse();
 		}
+	}
+
+	private void logError(String location, String url, String errorMessage) {
+		Log.fatal("Error while doing " + location);
+		Log.fatal("URL : " + url);
+		Log.fatal(errorMessage);
 	}
 
 
@@ -153,25 +162,23 @@ public class RequestHelper {
 			RestResponse<byte[]> response = readFileResponse(connection);
 
 			connection.disconnect();
-			Log.info("Fin request");
 			return response;
 		} catch (Exception e) {
-			Log.fatal("Error while doing file request " + e.getMessage());
+			logError("file request", pacsUrl, e.getMessage());
 			return getDeniedFileResponse();
 		}
 	}
 
-	public synchronized RestResponse<byte[]> fileRequestCMove(String pacsUrl) {
+	public Multi<byte[]> fileRequestCMove(String pacsUrl, List<String> transferSyntaxes) {
 		String studyUID = pacsUrl.split("/studies/")[1].split("/")[0];
 		String serieUID = pacsUrl.split("/series/")[1].split("/")[0];
+
 		try {
-			return RestResponse.ResponseBuilder
-					.ok(cMoveSCU.cMove(studyUID, serieUID))
-					.header("Content-Type", "multipart/related;start=\"<1@resteasy-multipart>\";transfer-syntax=1.2.840.10008.1.2.1;type=\"application/dicom\"; boundary=myBoundary")
-					.build();
+			return cMoveSCU.cMove(studyUID, serieUID, transferSyntaxes);
 		} catch (Exception e) {
-			Log.fatal("Error while doing file request " + e.getMessage());
-			return getDeniedFileResponse();
+			logError("CMove request", "cMove " + studyUID + " / " + serieUID, e.getMessage());
+
+			return Multi.createFrom().empty();
 		}
 	}
 

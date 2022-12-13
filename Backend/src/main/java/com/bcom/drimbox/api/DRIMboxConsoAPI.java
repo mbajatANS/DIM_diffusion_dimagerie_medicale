@@ -190,7 +190,7 @@ public class DRIMboxConsoAPI {
 		if (authHeader == null || authHeader.isEmpty())
 			return false;
 
-		return webTokenAuth.getUsersMap().containsKey(getCookieID());
+		return webTokenAuth.clientRegistered(getCookieID());
 	}
 
 	private String getCookieID() {
@@ -212,7 +212,7 @@ public class DRIMboxConsoAPI {
 		connection.setRequestMethod("GET");
 
 		if(!noAuth)
-			connection.setRequestProperty("Authorization",webTokenAuth.getUsersMap().get(getCookieID()).getAccessToken().getRawAccessToken());
+			connection.setRequestProperty("Authorization", webTokenAuth.getAccessToken(getCookieID()).getRawAccessToken());
 
 		int responseCode = connection.getResponseCode();
 

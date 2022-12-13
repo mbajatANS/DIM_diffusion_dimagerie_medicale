@@ -8,32 +8,33 @@ Ce démonsrateur est livré tel quel et ne fera pas l'objet de support.
 Certaines modifications pourront être apportées ponctuellement.
 
 Le projet est séparé en plusieurs parties: 
-- frontendRis : application Angular en JavaScript et TypeScript pour simuler le RIS/DPI appelant la DRIMbox Conso
-- frontend : application Angular en JavaScript et TypeScript pour l'interface de la DRIMbox Conso
+- frontendRisConso : application Angular en JavaScript et TypeScript pour simuler le RIS/DPI appelant la DRIMbox Conso
+- frontendConso : application Angular en JavaScript et TypeScript pour l'interface de la DRIMbox Conso
+- frontendSource : application Angular en JavaScript et TypeScript pour l'interface de la DRIMbox Source
 - backend : application Quarkus en Java pour le backend de la DRIMbox Conso et Source
 
 ## Compilation & lancement
 
-### Front-end RIS
+### Front-end RIS Conso
 
 Prérequis :
 - [Node.js](https://nodejs.org/en/) (version 16.xx LTS)
 - [Yarn](https://yarnpkg.com/getting-started/install)
 
-Puis, dans le répertoire **frontendRis** faire :
+Puis, dans le répertoire **frontendRisConso** faire :
 
 ```bash
 yarn install
 yarn start
 ```
 
-### Front-end
+### Front-end Conso
 
 Prérequis :
 - [Node.js](https://nodejs.org/en/) (version 16.xx LTS)
 - [Yarn](https://yarnpkg.com/getting-started/install)
 
-Puis, dans le répertoire **frontend** faire :
+Puis, dans le répertoire **frontendConso** faire :
 
 ```bash
 yarn install
@@ -41,6 +42,20 @@ yarn start
 ```
 
 
+L'IDE [Visual Studio Code](https://code.visualstudio.com/) a été utilisé pour le code d'exemple. Une version sans télémetrie est également disponible [ici](https://github.com/VSCodium/vscodium).
+
+### Front-end Source
+
+Prérequis :
+- [Node.js](https://nodejs.org/en/) (version 16.xx LTS)
+- [Yarn](https://yarnpkg.com/getting-started/install)
+
+Puis, dans le répertoire **frontendSource** faire :
+
+```bash
+yarn install
+yarn start
+```
 L'IDE [Visual Studio Code](https://code.visualstudio.com/) a été utilisé pour le code d'exemple. Une version sans télémetrie est également disponible [ici](https://github.com/VSCodium/vscodium).
 
 ### Back-end
@@ -211,7 +226,7 @@ A ce jour, le Pacs Source tourne sur la même machine que la DRIMbox Source.
 Plusieurs configurations sont nécessaires dans le fichier `Backend\src\resources\application.properties` afin de réaliser la connexion entre la DRIMbox et le Pacs.
 
 
-La propriété `dcm.cstore.host` doit être remplie avec l'IP sur lequel tourne le Pacs et la DRIMbox Source.
+La propriété `dcm.cstore.host` défini l'adresse IP sur laquelle la drimbox source va écouter. `0.0.0.0` ou `127.0.0.1` peut marcher en environement de developement, mais une adresse IP devra être assignée pour un environement de production.
 
 La propriété `dcm.cstore.AET` correspond à l'AETITLE du CStoreSCP de la DRIMbox Source et configuré dans le Pacs Source avec l'IP de `dcm.cstore.host` et le port de `dcm.cstore.port`.
 
@@ -220,6 +235,8 @@ La propriété `dcm.cmove.calledAET` correspond à l'AETITLE de votre Pacs Sourc
 La propriété `dcm.cmove.port` correspond au port de votre Pacs Source.
 
 La propriété `dcm.cmove.callingAET` correspond à l'AETITLE du CMoveSCU de la DRIMbox Source et configuré dans le Pacs Source avec l'IP de `dcm.cstore.host` et le port `104`.
+
+Vous devrez également créer un AET dans le pacs. Pour dcm4chee il vous faudra créer (e.g. : http://localhost:8080/dcm4chee-arc/ui2/#/device/aelist) un AETitle avec le nom contenu dans `dcm.cstore.AET` avec l'ip de la machine sur laquelle la drimbox source écoute. Notez qu'il faudra renseigner l'IP de la drimbox source et que le `127.0.0.1` ou `localhost` ne marcheront pas.
 
 
 ### Configuration du Pacs dans la DRIMbox Conso

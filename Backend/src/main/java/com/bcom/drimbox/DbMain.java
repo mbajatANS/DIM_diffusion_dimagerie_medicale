@@ -57,10 +57,12 @@ public class DbMain {
 	@Inject
 	CStoreSCP cStoreSCP;
 
-	enum DrimBOXMode {
+	public enum DrimBOXMode {
 		SOURCE,
 		CONSO
 	}
+	
+	DrimBOXMode type;
 
 	static final String SOURCE_ARG = "source";
 	static final String CONSO_ARG = "conso";
@@ -78,12 +80,17 @@ public class DbMain {
 		switch (mode) {
 			case SOURCE:
 				Log.info("Starting DrimBOX Source");
+				type = DrimBOXMode.SOURCE;
 				cStoreSCP.startCStore(calledAET, host, port);
 				break;
 			case CONSO:
 				Log.info("Starting DrimBOX Conso");
+				type = DrimBOXMode.CONSO;
 				break;
 		}
-
+	}
+	
+	public DrimBOXMode getTypeDrimbBOX() {
+		return this.type;
 	}
 }

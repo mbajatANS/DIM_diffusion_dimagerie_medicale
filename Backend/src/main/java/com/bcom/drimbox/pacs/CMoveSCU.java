@@ -26,7 +26,9 @@
 package com.bcom.drimbox.pacs;
 
 import java.io.IOException;
+import java.net.URL;
 import java.security.GeneralSecurityException;
+import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -35,6 +37,9 @@ import java.util.concurrent.ScheduledExecutorService;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
+import io.quarkus.logging.Log;
+import io.smallrye.mutiny.Multi;
+import io.vertx.core.Vertx;
 import org.dcm4che3.data.Attributes;
 import org.dcm4che3.data.Tag;
 import org.dcm4che3.data.UID;
@@ -62,39 +67,59 @@ public class CMoveSCU {
 	@ConfigProperty(name="dcm.cmove.port")
 	int port;
 
+	@ConfigProperty(name="pacs.baseUrl")
+	String pacsUrl;
+
+
 	private Attributes request;
 
 	// Cache of instance data
 	@Inject
 	CStoreSCP cStoreSCP;
 
+	private final Vertx vertx;
 
-	public byte[] cMove(String studyUID, String serieUID) throws Exception {
-		request = new Attributes(2);
-		this.request.setString(Tag.QueryRetrieveLevel, VR.CS,"SERIES");
-		this.request.setString(Tag.StudyInstanceUID, VR.UI, studyUID);
-		this.request.setString(Tag.SeriesInstanceUID, VR.UI, serieUID);
-		
-		cStoreSCP.resetMultipart();
-		
-		ExecutorService executor = Executors.newSingleThreadExecutor();
-		ScheduledExecutorService scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
-		try {
-			device = new Device("c-move-scu");
-			ae = new ApplicationEntity(this.callingAET);
-			Connection conn = new Connection();
-			device.addApplicationEntity(ae);
-			device.addConnection(conn);
-			ae.addConnection(conn);
+	@Inject
+	public CMoveSCU(Vertx vertx) {
+		this.vertx = vertx;
+	}
 
-			setExecutor(executor);
-			setScheduledExecutor(scheduledExecutor);
-			doCMove();
-		} finally {
-			executor.shutdown();
-			scheduledExecutor.shutdown();
-		}
-		return cStoreSCP.getMultipartGlobal();
+
+	public Multi<byte[]> cMove(String studyUID, String serieUID, List<String> transferSyntaxes)  {
+		// We start the cmove in another thread so we can return the Multi as soon as possible
+		vertx.executeBlocking(promise -> {
+					request = new Attributes(2);
+					this.request.setString(Tag.QueryRetrieveLevel, VR.CS, "SERIES");
+					this.request.setString(Tag.StudyInstanceUID, VR.UI, studyUID);
+					this.request.setString(Tag.SeriesInstanceUID, VR.UI, serieUID);
+
+					cStoreSCP.resetMultipart();
+					cStoreSCP.resetTransferSyntaxes(transferSyntaxes);
+					ExecutorService executor = Executors.newSingleThreadExecutor();
+					ScheduledExecutorService scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
+					try {
+						device = new Device("c-move-scu");
+						ae = new ApplicationEntity(this.callingAET);
+						Connection conn = new Connection();
+						device.addApplicationEntity(ae);
+						device.addConnection(conn);
+						ae.addConnection(conn);
+
+						setExecutor(executor);
+						setScheduledExecutor(scheduledExecutor);
+						doCMove();
+						cStoreSCP.done();
+					} catch (Exception e) {
+						Log.error("Error while doing cmove : " + e.getMessage());
+					} finally {
+						executor.shutdown();
+						scheduledExecutor.shutdown();
+					}
+					promise.complete();
+				}, res -> Log.info("Cmove done")
+		);
+
+		return cStoreSCP.getResponseStream();
 	}
 
 	public void setExecutor(Executor executor) {
@@ -108,7 +133,9 @@ public class CMoveSCU {
 	private void doCMove()
 			throws IOException, InterruptedException, GeneralSecurityException, IncompatibleConnectionException {
 
-		Association as = ae.connect(getConnection(this.cStoreSCP.getHost(), this.port), makeAAssociateRQ(this.calledAET));
+		String pacsBaseUrl = new URL(pacsUrl).getHost();
+
+		Association as = ae.connect(getConnection(pacsBaseUrl, this.port), makeAAssociateRQ(this.calledAET));
 		try {
 			as.cmove(UID.StudyRootQueryRetrieveInformationModelMove,
 					Priority.NORMAL,
