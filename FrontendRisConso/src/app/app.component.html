@@ -23,7 +23,7 @@
   ~ SOFTWARE.
   -->
 
-<router-outlet *ngIf="structurePanel === false"></router-outlet>
+<app-front [selectedStruct]="selectedStruct" *ngIf="structurePanel === false"></app-front>
 <div *ngIf="structurePanel === true">
   <div class="form-popup">
     <form class="form-container">

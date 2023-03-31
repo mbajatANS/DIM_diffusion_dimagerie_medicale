@@ -1,6 +1,8 @@
 /*
  *  VIHFField.java - DRIMBox
  *
+ * N°IDDN : IDDN.FR.001.020012.000.S.C.2023.000.30000
+ *
  * MIT License
  *
  * Copyright (c) 2022 b<>com
@@ -68,7 +70,7 @@ public enum VIHFField {
 
     private String fieldName;
 
-    private VIHFField(String fieldName){
+    VIHFField(String fieldName){
         this.fieldName = fieldName;
     }
 
@@ -91,7 +93,7 @@ public enum VIHFField {
         }
     }
 
-    private VIHFField(){
+    VIHFField(){
 
     }
     @Override

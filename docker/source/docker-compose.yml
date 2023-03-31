@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  # Drimbox
+   frontend:
+    image: drimbox-source:latest
+    ports:
+      - 443:443
+      
+   drimbox-conso:
+    build:
+      context: ../../Backend
+    ports:
+      - 8081:8081
+    environment:
+      DRIMBOX_MODE: source

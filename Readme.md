@@ -245,6 +245,19 @@ Aujourd'hui, l'export vers le Pacs de la DRIMbox Conso se fait via un lien DICOM
 Ce lien est paramétrable avec la propriété `pacs.stowUrl` au niveau du fichier `Backend\src\resources\application.properties`.
 
 
+## Erreurs courantes
+
+### "No route to host" pendant le C-MOVE
+
+Le message suivant peut apparaître lors du C-MOVE (DRIMbox source) :
+
+```
+ LOCAL->DCM4CHEE(3) >> 1:C-MOVE-RSP[pcid=1, status=a702H, errorComment=java.net.NoRouteToHostException: No route to host (Host unreacha
+  tsuid=1.2.840.10008.1.2 - Implicit VR Little Endian]
+```
+
+Ce message est du à une mauvaise configuration du PACS et de l'aelist. Voir la section configuration de la DRIMbox source et assurez vous que l'AET et le port soit bien renseignés dans le pacs.
+
 ## Contact
 
 Pour toute information complémentaire, merci de contacter guillaume.pasquier@b-com.com et ans-forge@esante.gouv.fr

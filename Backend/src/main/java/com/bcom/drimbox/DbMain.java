@@ -1,6 +1,8 @@
 /*
  *  DbMain.java - DRIMBox
  *
+ * N°IDDN : IDDN.FR.001.020012.000.S.C.2023.000.30000
+ *
  * MIT License
  *
  * Copyright (c) 2022 b<>com
@@ -59,22 +61,29 @@ public class DbMain {
 
 	public enum DrimBOXMode {
 		SOURCE,
-		CONSO
+		CONSO,
+		RIS
 	}
 	
 	DrimBOXMode type;
 
 	static final String SOURCE_ARG = "source";
 	static final String CONSO_ARG = "conso";
+	static final String RIS_ARG = "ris";
 	@PostConstruct
 	public void checkParams() throws Exception {
+
 		DrimBOXMode mode = DrimBOXMode.CONSO;
 		// Also check environment (mainly for docker)
 		String envDbMode = Optional.ofNullable(System.getenv("DRIMBOX_MODE")).orElse("");
-
+		
 		if (args.length == 1 && args[0].equals(SOURCE_ARG)
 			|| envDbMode.equals(SOURCE_ARG)) {
 			mode = DrimBOXMode.SOURCE;
+		}
+		else if (args.length == 1 && args[0].equals(RIS_ARG)
+			|| envDbMode.equals(RIS_ARG)) {
+			mode = DrimBOXMode.RIS;
 		}
 
 		switch (mode) {
@@ -87,7 +96,13 @@ public class DbMain {
 				Log.info("Starting DrimBOX Conso");
 				type = DrimBOXMode.CONSO;
 				break;
+			case RIS:
+				Log.info("Starting DrimBOX Ris");
+				type = DrimBOXMode.RIS;
+				break;
 		}
+
+		Log.info("java.library.path=" + System.getProperty("java.library.path"));
 	}
 	
 	public DrimBOXMode getTypeDrimbBOX() {

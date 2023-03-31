@@ -1,6 +1,8 @@
 /*
  *  DRIMboxSourceAPI.java - DRIMBox
  *
+ * N°IDDN : IDDN.FR.001.020012.000.S.C.2023.000.30000
+ *
  * MIT License
  *
  * Copyright (c) 2022 b<>com
@@ -33,7 +35,11 @@ import static com.bcom.drimbox.utils.PrefixConstants.STUDIES_PREFIX;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import javax.inject.Inject;
 import javax.ws.rs.GET;
@@ -51,6 +57,7 @@ import com.bcom.drimbox.pacs.CStoreSCP;
 import com.bcom.drimbox.psc.ProSanteConnect;
 import com.bcom.drimbox.utils.RequestHelper;
 
+import io.quarkus.logging.Log;
 import io.smallrye.mutiny.Multi;
 
 
@@ -70,12 +77,12 @@ public class DRIMboxSourceAPI {
 
 	@Inject
 	RequestHelper requestHelper;
-	
+
 	@Inject
 	CStoreSCP cstoreSCP;
 
 	/**
-	 * Bearer token that is in the request. It will be verified with the instropection mechanism of prosanteconnect
+	 * Bearer token that is in the request. It will be verified with the introspection mechanism of prosanteconnect
 	 */
 	@HeaderParam("Authorization")
 	String bearerToken;
@@ -90,16 +97,26 @@ public class DRIMboxSourceAPI {
 	@Path("/studies/{studyUID}/series/{seriesUID}")
 	@Produces("multipart/related;start=\\\"<1@resteasy-multipart>\\\";transfer-syntax=1.2.840.10008.1.2.1;type=\\\"application/dicom\\\"; boundary=myBoundary")
 	public Multi<byte[]> drimboxMultipartWado(String studyUID, String seriesUID, @Context HttpHeaders headers) {
-		String url = getWadoUrl() + "/" + STUDIES_PREFIX + "/" + studyUID + "/" + SERIES_PREFIX + "/" + seriesUID;
+		if (!checkAuthorisation()) {
+			Log.fatal("Authentication failure");
+			return Multi.createFrom().empty();
+		}
 
-		List<String> transferSyntaxes = new ArrayList<String>();
+		String url = getWadoUrl() + "/" + STUDIES_PREFIX + "/" + studyUID + "/" + SERIES_PREFIX + "/" + seriesUID;
+		Map<String, String> tsMap = new HashMap<>();
 		for (String header : headers.getRequestHeaders().get("Accept")) {
 
-			transferSyntaxes.add(header.split("transfer-syntax=")[1].split(";")[0]);
+			tsMap.put(header.split("transfer-syntax=")[1].split(";")[0], header.split("q=")[1].split(";")[0]);
 		}
+		tsMap = tsMap.entrySet().stream().sorted(Map.Entry.<String, String>comparingByValue().reversed()).collect(Collectors.toMap(
+				Map.Entry::getKey, 
+				Map.Entry::getValue, 
+				(oldValue, newValue) -> oldValue, LinkedHashMap::new));
+		List<String> transferSyntaxes = new ArrayList<>(tsMap.keySet());
+		
 		String boundary = headers.getRequestHeaders().get("Accept").get(0).split("boundary=")[1];
 		cstoreSCP.setBoundary(boundary);
-		
+
 		return requestHelper.fileRequestCMove(url, transferSyntaxes);
 	}
 
@@ -135,7 +152,7 @@ public class DRIMboxSourceAPI {
 	private HttpURLConnection getPacsConnection(String pacsUrl) throws Exception {
 		final URL url = new URL(pacsUrl);
 
-		if (!noAuth && (bearerToken.isEmpty() || !proSanteConnect.introspectToken(bearerToken))) {
+		if (!checkAuthorisation()) {
 			throw new Exception("Authentication failure");
 		}
 
@@ -149,6 +166,11 @@ public class DRIMboxSourceAPI {
 
 		return connection;
 	}
+
+	private boolean checkAuthorisation()  {
+		return noAuth || (!bearerToken.isEmpty() && proSanteConnect.introspectToken(bearerToken));
+	}
+
 
 	// Get wado url (e.g. http://localhost:8080/dcm4chee-arc/aets/AS_RECEIVED/rs)
 	private String getWadoUrl() {

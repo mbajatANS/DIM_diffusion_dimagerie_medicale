@@ -1,6 +1,8 @@
 /*
  *  DRIMboxConsoAPI.java - DRIMBox
  *
+ * N°IDDN : IDDN.FR.001.020012.000.S.C.2023.000.30000
+ *
  * MIT License
  *
  * Copyright (c) 2022 b<>com
@@ -25,23 +27,28 @@
 
 package com.bcom.drimbox.api;
 
+import com.bcom.drimbox.dmp.xades.file.KOSFile;
 import io.quarkus.logging.Log;
 import io.smallrye.mutiny.Uni;
 import com.bcom.drimbox.dmp.auth.WebTokenAuth;
 import com.bcom.drimbox.pacs.PacsCache;
 import com.bcom.drimbox.utils.RequestHelper;
+import org.dcm4che3.data.Tag;
+import org.dcm4che3.util.TagUtils;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.resteasy.reactive.RestResponse;
 
 import javax.inject.Inject;
-import javax.json.Json;
-import javax.json.JsonArrayBuilder;
-import javax.json.JsonObjectBuilder;
+import javax.json.*;
 import javax.ws.rs.*;
 import javax.ws.rs.core.*;
+import java.io.StringReader;
 import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URI;
 import java.net.URL;
 import java.util.concurrent.Future;
+import java.util.function.Function;
 
 import static com.bcom.drimbox.utils.PrefixConstants.*;
 
@@ -60,7 +67,7 @@ public class DRIMboxConsoAPI {
 	 * Http protocol (may be changed later to https://)
 	 */
 	public static final String HTTP_PROTOCOL = "http://";
-
+	public static final String DICOM_FILE_PREFIX = "dicomfile";
 	@Inject
 	PacsCache pacsCache;
 
@@ -142,9 +149,17 @@ public class DRIMboxConsoAPI {
 		}
 
 		// This is non-blocking operation
-		pacsCache.addNewEntry(drimboxSourceURL, studyUID, seriesUID);
+		pacsCache.addNewEntry(drimboxSourceURL, getAccessToken(), studyUID, seriesUID);
 
 		return requestHelper.stringRequest(url + "/" + METADATA_PREFIX, this::getDrimboxConnection);
+	}
+
+	private String getAccessToken() {
+		String accessToken = "noAuthDebugOnly";
+		if (!noAuth) {
+			accessToken = webTokenAuth.getAccessToken(getCookieID()).getRawAccessToken();
+		}
+		return accessToken;
 	}
 
 	@Produces(MediaType.APPLICATION_JSON)
@@ -179,6 +194,162 @@ public class DRIMboxConsoAPI {
 		root.add("servers", servers);
 
 		return root.build().toString();
+	}
+
+
+
+	@Produces(MediaType.APPLICATION_JSON)
+	@GET
+	@Path("ohifv3metadata/{studyUID}/{seriesUID}")
+	public String getOHIFv3Metadata(@Context UriInfo uriInfo, String studyUID, String seriesUID) {
+		String drimboxSourceURL = "";
+		// get drimbox source url from KOS
+		KOSFile kos = DmpAPI.getKOS(studyUID);
+		if (kos == null) {
+			Log.error("can't find KOS associated with study UID " + studyUID);
+			return "";
+		}
+
+		String seriesURL = kos.getSeriesURL().get(seriesUID);
+		if (seriesURL == null) {
+			Log.error("Can't find series " + seriesUID + "in KOS " + studyUID);
+			return "";
+		}
+
+		// Get drimboxSource url
+		try {
+			URL u = new URL(seriesURL);
+			String protocol = u.getProtocol();
+			String authority = u.getAuthority();
+			drimboxSourceURL = String.format("%s://%s", protocol, authority);
+		} catch (MalformedURLException e) {
+			e.printStackTrace();
+			return "";
+		}
+
+		// Note : This will also populate the cache
+		return getOHIFMetadata(uriInfo.getBaseUri(), studyUID, seriesUID, drimboxSourceURL);
+	}
+
+	@Produces(MediaType.APPLICATION_JSON)
+	@GET
+	@Path("ohifv3metadata/{drimboxSourceURL}/{studyUID}/{seriesUID}")
+	public String getOHIFv3Metadata(@Context UriInfo uriInfo, String drimboxSourceURL, String studyUID, String seriesUID) {
+		// Note : This will also populate the cache
+		return getOHIFMetadata(uriInfo.getBaseUri(), studyUID, seriesUID, drimboxSourceURL);
+	}
+
+
+	// Note : this method create a JSON for OHIF AND populate the cache
+	private String getOHIFMetadata(URI drimboxConsoBaseURI, String studyUID, String seriesUID, String drimboxSourceURL) {
+		// First see if we can get the metadata from the source
+		// TODO : check auth
+		String url = HTTP_PROTOCOL + drimboxSourceURL + "/" + DRIMBOX_PREFIX + "/" + STUDIES_PREFIX + "/" + studyUID;
+		if (!seriesUID.isEmpty()) {
+			url += "/series/" + seriesUID;
+		}
+		var response = requestHelper.stringRequest(url + "/" + METADATA_PREFIX, this::getDrimboxConnection);
+
+		// TODO : better handling of errors
+		if (response.getStatus() != 200) {
+			return "";
+		}
+
+		// Add series to the cache
+		// This is non-blocking operation
+		pacsCache.addNewEntry(drimboxSourceURL, getAccessToken(), studyUID, seriesUID);
+
+
+		// Read metadata from server
+		var jsonReader = Json.createReader(new StringReader(response.getEntity()));
+		JsonArray dicomMetadata = jsonReader.readArray();
+
+
+		JsonObjectBuilder root = Json.createObjectBuilder();
+		JsonArrayBuilder studiesArray = Json.createArrayBuilder();
+		JsonArrayBuilder seriesArray = Json.createArrayBuilder();
+		JsonArrayBuilder instancesArray = Json.createArrayBuilder();
+
+		JsonObjectBuilder seriesObject = Json.createObjectBuilder();
+		seriesObject.add("SeriesInstanceUID", seriesUID);
+
+		for(Object dicomInstanceMetadata : dicomMetadata) {
+			JsonObject currentInstanceJson = (JsonObject) dicomInstanceMetadata;
+			Function<Integer, String> getStringField = (var tag) ->  currentInstanceJson.getJsonObject(TagUtils.toHexString(tag)).getJsonArray("Value").getString(0);
+			Function<Integer, Integer> getIntField = (var tag) ->  currentInstanceJson.getJsonObject(TagUtils.toHexString(tag)).getJsonArray("Value").getInt(0);
+
+			JsonObjectBuilder metadata = Json.createObjectBuilder();
+			String instanceUID = getStringField.apply(Tag.SOPInstanceUID);
+			metadata.add("SOPInstanceUID", instanceUID);
+			metadata.add("SeriesInstanceUID", getStringField.apply(Tag.SeriesInstanceUID));
+			metadata.add("StudyInstanceUID", getStringField.apply(Tag.StudyInstanceUID));
+			metadata.add("SOPClassUID", getStringField.apply(Tag.SOPClassUID));
+			metadata.add("Modality", getStringField.apply(Tag.Modality));
+			metadata.add("Columns", getIntField.apply(Tag.Columns));
+			metadata.add("Rows", getIntField.apply(Tag.Rows));
+			metadata.add("PixelRepresentation", getIntField.apply(Tag.PixelRepresentation));
+			metadata.add("BitsAllocated", getIntField.apply(Tag.BitsAllocated));
+			metadata.add("BitsStored", getIntField.apply(Tag.BitsStored));
+			metadata.add("SamplesPerPixel", getIntField.apply(Tag.SamplesPerPixel));
+			metadata.add("HighBit", getIntField.apply(Tag.HighBit));
+			metadata.add("PhotometricInterpretation", getStringField.apply(Tag.PhotometricInterpretation));
+			metadata.add("InstanceNumber", getStringField.apply(Tag.InstanceNumber));
+
+
+
+			// Add to the instance list
+			instancesArray.add(Json.createObjectBuilder()
+					.add("metadata", metadata)
+					.add("url", "dicomweb:" + drimboxConsoBaseURI + DICOM_FILE_PREFIX + "/" + studyUID + "/" + seriesUID + "/" + instanceUID )
+			);
+		}
+		seriesObject.add("instances", instancesArray);
+		seriesObject.add("Modality", "CT");
+		seriesArray.add(seriesObject);
+
+		JsonObjectBuilder study = Json.createObjectBuilder();
+		study.add("StudyInstanceUID", studyUID);
+		study.add("series", seriesArray);
+		study.add("NumInstances", dicomMetadata.size());
+
+		study.add("StudyDate", "20000101");
+		study.add("StudyTime", "");
+		study.add("PatientName", "");
+		study.add("PatientID", "LOL");
+		study.add("AccessionNumber", "");
+		study.add("PatientAge", "");
+		study.add("PatientSex", "");
+		study.add("StudyDescription", "");
+		// TODO handle modalities (maybe not necessary ?)
+		study.add("Modalities", "CT");
+
+		studiesArray.add(study);
+
+		root.add("studies", studiesArray);
+
+		return root.build().toString();
+	}
+
+	@GET
+	@Path(DICOM_FILE_PREFIX + "/{studyUID}/{seriesUID}/{instanceUID}")
+	//@Produces("application/dicom")
+	public Uni<RestResponse<byte[]>> getDicomFile(String studyUID, String seriesUID, String instanceUID) {
+		if (!checkAuthorization())
+			return Uni.createFrom().item(requestHelper.getDeniedFileResponse());
+
+		try {
+			Future<byte[]> future = pacsCache.getDicomFile(studyUID, seriesUID, instanceUID);
+			return Uni.createFrom().future(future).onItem().transform(
+					item -> {
+						Log.info("[dicomfile] Response : " + instanceUID);
+						return RestResponse.ResponseBuilder.ok(item).header("Accept-Ranges", "bytes").build();
+					}
+			);
+		} catch (Exception e) {
+			// TODO : Is this really fatal ?
+			Log.fatal("Can't get file from cache");
+			return Uni.createFrom().item(requestHelper.getDeniedFileResponse());
+		}
 	}
 
 	private Boolean checkAuthorization() {

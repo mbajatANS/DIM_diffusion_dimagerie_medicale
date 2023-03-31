@@ -1,6 +1,8 @@
 /*
  *  WebTokenAuth.java - DRIMBox
  *
+ * N°IDDN : IDDN.FR.001.020012.000.S.C.2023.000.30000
+ *
  * MIT License
  *
  * Copyright (c) 2022 b<>com
@@ -40,12 +42,10 @@ import javax.json.JsonObject;
 @Singleton
 public class WebTokenAuth {
 
-	private Map<String, UserData> usersMap;
+	private final Map<String, UserData> usersMap = new HashMap<>();
 
 
-	WebTokenAuth(){
-		usersMap = new HashMap<>();
-	}
+	WebTokenAuth(){	}
 
 	/***
 	 * Return the status of registration.

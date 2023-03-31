@@ -1,0 +1,61 @@
+{
+  "resourceType": "ValueSet",
+  "id": "regionAnatomique",
+  "compose": {
+    "include": [
+      {
+        "system": "http://dicom.nema.org/resources/ontology/DCM",
+        "concept": [
+          {
+            "code": "63337009",
+            "display": "Abdomen + pelvis"
+          },
+          {
+            "code": "38266002",
+            "display": "Corps entier"
+          },
+          {
+            "code": "53120007",
+            "display": "Membres superieurs"
+          },
+          {
+            "code": "61685007",
+            "display": "Membres inferieurs"
+          },
+          {
+            "code": "67734004",
+            "display": "Thorax"
+          },
+          {
+            "code": "69536005",
+            "display": "Tete"
+          },
+          {
+            "code": "45048000",
+            "display": "Cou"
+          },
+          {
+            "code": "113257007",
+            "display": "Cardiovasculaire"
+          },
+          {
+            "code": "80891009",
+            "display": "Coeur"
+          },
+          {
+            "code": "76752008",
+            "display": "Sein"
+          },
+          {
+            "code": "786880003",
+            "display": "Bouche + Dent"
+          },
+          {
+            "code": "737561001",
+            "display": "Colonne vertebrale"
+          }
+        ]
+      }
+    ]
+  }
+}

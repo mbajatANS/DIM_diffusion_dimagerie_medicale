@@ -30,6 +30,12 @@ const PROXY_CONFIG = {
     "secure": false,
     "logLevel": "debug"
   },
+  "/parameters": {
+    "target": "http://localhost:8081",
+    "changeOrigin": true,
+    "secure": false,
+    "logLevel": "debug"
+  },
   "/ohif": {
     "target": "http://localhost:8081",
     "changeOrigin": true,

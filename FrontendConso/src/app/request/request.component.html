@@ -57,6 +57,10 @@
     <h3>Une erreur est survenue : Vous n'avez pas le droit d'accéder aux documents du patient</h3>
   </div>
 
+  <div *ngIf="accessUnknown === true">
+    <h3>Veuillez récupérer le consentement pour ce patient au niveau du RIS</h3>
+  </div>
+
   <div>
     <h4 style="text-align: center;">Informations sur le patient</h4>
     <table class="center">
@@ -93,7 +97,7 @@
     </mat-form-field>
 
     <mat-form-field appearance="fill" style="background-color: grey; margin-left: 5%;">
-      <mat-label>Date</mat-label>
+      <mat-label>Fin</mat-label>
       <input style="color: black" matInput [matDatepicker]="picker" [formControl]="stopDate" [min]="startDate.value">
       <mat-hint>dd/mm/yyyy</mat-hint>
       <mat-datepicker-toggle matSuffix [for]="picker"></mat-datepicker-toggle>
@@ -145,10 +149,10 @@
           <button title="Visualiser" (click)="documentsService.openPdf(el)" class="material-symbols-outlined dark">preview</button>
         </td>
         <td class="buttonHide">
-          <button title="Importer" *ngIf="el.refKos.length != 0" (click)="documentsService.openFormStudy(el)" class="material-symbols-outlined dark">cloud_download</button>
+          <button title="Visualiser" *ngIf="el.refKos.length != 0" (click)="documentsService.goToViewer(el.retrieveURL)" class="material-symbols-outlined dark">remove_red_eye</button>
         </td>
         <td class="buttonHide">
-          <button title="Visualiser" *ngIf="el.refKos.length != 0" (click)="documentsService.goToViewer(el.retrieveURL)" class="material-symbols-outlined dark">remove_red_eye</button>
+          <button title="Importer" *ngIf="el.refKos.length != 0" (click)="documentsService.openFormStudy(el)" class="material-symbols-outlined dark">cloud_download</button>
         </td>
       </tr>
 
@@ -162,10 +166,10 @@
                   <td>{{ serie.serieModalite }}</td>
 
                   <td class="buttonHide" style="color:#FFF">
-                    <button title="Importer" (click)="documentsService.openFormSerie(serie)" class="material-symbols-outlined dark">cloud_download</button>
+                    <button title="Visualiser" (click)="documentsService.goToViewer(serie.retrieveURL)" class="material-symbols-outlined dark">remove_red_eye</button>
                   </td>
                   <td class="buttonHide" style="color:#FFF">
-                    <button title="Visualiser" (click)="documentsService.goToViewer(serie.retrieveURL)" class="material-symbols-outlined dark">remove_red_eye</button>
+                    <button title="Importer" (click)="documentsService.openFormSerie(serie)" class="material-symbols-outlined dark">cloud_download</button>
                   </td>
                 </tr>
               </tbody>
@@ -193,10 +197,10 @@
                     {{study.kos.region}}
                   </td>
                   <td class="buttonHide">
-                    <button title="Importer" *ngIf="study.kos.refKos !== -1" (click)="documentsService.openFormStudy(study.kos)" class="material-symbols-outlined dark">cloud_download</button>
+                    <button title="Visualiser" (click)="documentsService.goToViewer(study.kos.retrieveURL)" class="material-symbols-outlined dark">remove_red_eye</button>
                   </td>
                   <td class="buttonHide">
-                    <button title="Visualiser" (click)="documentsService.goToViewer(study.kos.retrieveURL)" class="material-symbols-outlined dark">remove_red_eye</button>
+                    <button title="Importer" *ngIf="study.kos.refKos !== -1" (click)="documentsService.openFormStudy(study.kos)" class="material-symbols-outlined dark">cloud_download</button>
                   </td>
                 </tr>
                 <tr *ngIf="study.kos.display" style="background-color: #000000">
@@ -209,10 +213,10 @@
                             <td>{{ serie.serieModalite }}</td>
 
                             <td class="buttonHide" style="color:#FFF">
-                              <button title="Importer" (click)="documentsService.openFormSerie(serie)" class="material-symbols-outlined dark">cloud_download</button>
+                              <button title="Visualiser" (click)="documentsService.goToViewer(serie.retrieveURL)" class="material-symbols-outlined dark">remove_red_eye</button>
                             </td>
                             <td class="buttonHide" style="color:#FFF">
-                              <button title="Visualiser" (click)="documentsService.goToViewer(serie.retrieveURL)" class="material-symbols-outlined dark">remove_red_eye</button>
+                              <button title="Importer" (click)="documentsService.openFormSerie(serie)" class="material-symbols-outlined dark">cloud_download</button>
                             </td>
                           </tr>
                         </tbody>

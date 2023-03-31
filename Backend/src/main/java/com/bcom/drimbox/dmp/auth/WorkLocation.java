@@ -1,6 +1,8 @@
 /*
  *  WorkLocation.java - DRIMBox
  *
+ * N°IDDN : IDDN.FR.001.020012.000.S.C.2023.000.30000
+ *
  * MIT License
  *
  * Copyright (c) 2022 b<>com
@@ -27,6 +29,7 @@ package com.bcom.drimbox.dmp.auth;
 
 import javax.inject.Inject;
 import javax.json.JsonArray;
+import javax.json.JsonObject;
 import javax.ws.rs.CookieParam;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
@@ -34,18 +37,22 @@ import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Cookie;
 import javax.ws.rs.core.Response;
 
+import io.quarkus.logging.Log;
+
 @Path("/api")
 public class WorkLocation {
 
 	@Inject
 	WebTokenAuth webTokenAuth;
 
+	protected static final String FIELD_ACTIVITIES = "activities";
+	
 	/**
 	 * Retrieve all work locations
 	 */
 	@Path("/locations")
 	@GET
-	public Response retrieveWorkLocations(@CookieParam("SessionToken") Cookie cookieSession) throws Exception {
+	public Response retrieveWorkLocations(@CookieParam("SessionToken") Cookie cookieSession) {
 
 		if(cookieSession != null && webTokenAuth.clientRegistered(cookieSession.getValue())) {
 			String sectActivite;
@@ -70,9 +77,21 @@ public class WorkLocation {
 	public Response setWorkLocation(@QueryParam("workLocation") String workLocation, @CookieParam("SessionToken") Cookie cookieSession) {
 
 		if(cookieSession != null && webTokenAuth.setSecteurActivite(cookieSession.getValue(), workLocation)) {
-			return Response.ok("Success").build();
+			
+			JsonObject exercices = webTokenAuth.getUserInfo(cookieSession.getValue()).getJsonObject("SubjectRefPro").getJsonArray("exercices").getJsonObject(0);
+			JsonObject activites = null;
+			Log.info(exercices.getJsonArray(FIELD_ACTIVITIES).size());
+			for (int i=0; i < exercices.getJsonArray(FIELD_ACTIVITIES).size(); i++) {
+				if(exercices.getJsonArray(FIELD_ACTIVITIES).getJsonObject(i).getString("raisonSocialeSite").equals(workLocation))
+					activites = exercices.getJsonArray(FIELD_ACTIVITIES).getJsonObject(i);
+			}
+
+
+			if (activites != null) {
+				return Response.ok("Success " + activites.getString("ancienIdentifiantDeLaStructure")).build();
+			}
 		}
 
-		else return Response.status(401).build();
+		return Response.status(401).build();
 	}
 }

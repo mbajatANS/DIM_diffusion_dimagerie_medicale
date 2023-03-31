@@ -1,6 +1,8 @@
 /*
  *  CStoreSCP.java - DRIMBox
  *
+ * N°IDDN : IDDN.FR.001.020012.000.S.C.2023.000.30000
+ *
  * MIT License
  *
  * Copyright (c) 2022 b<>com
@@ -25,10 +27,15 @@
 
 package com.bcom.drimbox.pacs;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.security.GeneralSecurityException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -39,6 +46,10 @@ import javax.inject.Singleton;
 
 import org.dcm4che3.data.Attributes;
 import org.dcm4che3.data.Tag;
+import org.dcm4che3.data.VR;
+import org.dcm4che3.io.DicomEncodingOptions;
+import org.dcm4che3.io.DicomInputStream;
+import org.dcm4che3.io.DicomInputStream.IncludeBulkData;
 import org.dcm4che3.io.DicomOutputStream;
 import org.dcm4che3.net.ApplicationEntity;
 import org.dcm4che3.net.Association;
@@ -51,8 +62,10 @@ import org.dcm4che3.net.pdu.PresentationContext;
 import org.dcm4che3.net.service.BasicCEchoSCP;
 import org.dcm4che3.net.service.BasicCStoreSCP;
 import org.dcm4che3.net.service.DicomServiceRegistry;
+import org.dcm4che3.util.SafeClose;
 import org.dcm4che3.util.StreamUtils;
 
+import io.quarkus.logging.Log;
 import io.smallrye.mutiny.Multi;
 import io.vertx.mutiny.core.eventbus.EventBus;
 
@@ -71,15 +84,15 @@ public class CStoreSCP {
 
 	private String host;
 	private String aet;
-	
+
 	private String boundary;
-	
+
 	private ApplicationEntity ae;
+
+	private String ts;
 
 	@Inject
 	EventBus eventBus;
-
-
 
 	public void startCStore(String calledAET, String bindAddress, int port) throws Exception {
 		this.host = bindAddress;
@@ -140,9 +153,11 @@ public class CStoreSCP {
 
 
 	public Multi<byte[]> getResponseStream() {
+		Instant startTime = Instant.now();
 		return Multi.createFrom().emitter( em -> {
 			// Emit a new image when received
 			eventBus.consumer(EB_IMAGE_ADDRESS).handler(m-> {
+				Log.info("Pacs cmove Time : " + Duration.between(startTime, Instant.now()).toString());
 				em.emit((byte[]) m.body());
 			});
 
@@ -153,28 +168,29 @@ public class CStoreSCP {
 			});
 		});
 	}
-	
+
 	public void resetMultipart() {
 		this.currentID = BASE_INDEX;
 	}
-	
+
 	public void setBoundary(String boundary) {
 		this.boundary = boundary;
 	}
-	
+
 	public void resetTransferSyntaxes(List<String> transferSyntaxs) {
-		
-		  String[] str = new String[transferSyntaxs.size()];
-		  
-	        for (int i = 0; i < transferSyntaxs.size(); i++) {
-	            str[i] = transferSyntaxs.get(i);
-	        }
-	        
+
+		String[] str = new String[transferSyntaxs.size()];
+
+		for (int i = 0; i < transferSyntaxs.size(); i++) {
+			str[i] = transferSyntaxs.get(i);
+		}
+
 
 		this.ae.removeTransferCapabilityFor("*", TransferCapability.Role.SCP);		
 		this.ae.addTransferCapability(new TransferCapability(null,
 				"*", TransferCapability.Role.SCP, str));
-		}
+		this.ts = str[0];
+	}
 
 	private void store(Association as, PresentationContext pc, Attributes rq, PDVInputStream data)
 			throws IOException {
@@ -182,17 +198,46 @@ public class CStoreSCP {
 		String iuid = rq.getString(Tag.AffectedSOPInstanceUID);
 		String tsuid = pc.getTransferSyntax();
 		Attributes fmi = as.createFileMetaInformation(iuid, cuid, tsuid);
-
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
-		output.write(("--" + this.boundary + "\r\nContent-ID: <"+ currentID +"@resteasy-multipart>\r\nContent-Type: application/dicom;transfer-syntax=1.2.840.10008.1.2.1\r\n\r\n").getBytes());
+		ByteArrayOutputStream output2 = new ByteArrayOutputStream();
 
-		try (DicomOutputStream dos = new DicomOutputStream(output, tsuid)) {
+		output.write(("--" + this.boundary + "\r\nContent-ID: <"+ currentID +"@resteasy-multipart>\r\nContent-Type: application/dicom;transfer-syntax="+this.ts+"\r\n\r\n").getBytes());
+
+		try (DicomOutputStream dos = new DicomOutputStream(output2, tsuid)) {
 			dos.writeFileMetaInformation(fmi);
 			StreamUtils.copy(data, dos);
 		}
 
-		output.write(data.readAllBytes());
+		InputStream input = new ByteArrayInputStream(output2.toByteArray()); 
+
+		if (!Objects.equals(this.ts, tsuid)) {
+			DCMTranscoder dcm2Dcm = new DCMTranscoder();
+			try {
+				dcm2Dcm.setTransferSyntax(ts);
+				output.write(dcm2Dcm.transcode(input).toByteArray());
+			} catch (InterruptedException e) {
+				Log.error("Can't transcode current input stream");
+				e.printStackTrace();
+			}
+		}
+		else {
+			Attributes dataset;
+			DicomOutputStream dos = null;
+			try (DicomInputStream dis = new DicomInputStream(input)) {
+
+				dis.setIncludeBulkData(IncludeBulkData.URI);
+				fmi = dis.readFileMetaInformation();
+				dataset = dis.readDataset();
+				dataset.setString(Tag.OtherPatientIDs, VR.LO, "1234");
+				dos = new DicomOutputStream(output, tsuid);
+				dos.setEncodingOptions(DicomEncodingOptions.DEFAULT);
+				dos.writeDataset(fmi, dataset);
+			} finally {
+				SafeClose.close(dos);
+			}
+		}
 		output.write(("\r\n").getBytes());
+
 		output.flush();
 
 		// Tell vertx we have a new image
@@ -210,19 +255,3 @@ public class CStoreSCP {
 		return aet;
 	}
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

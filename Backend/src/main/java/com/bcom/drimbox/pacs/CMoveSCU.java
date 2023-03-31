@@ -1,6 +1,8 @@
 /*
  *  CMoveSCU.java - DRIMBox
  *
+ * N°IDDN : IDDN.FR.001.020012.000.S.C.2023.000.30000
+ *
  * MIT License
  *
  * Copyright (c) 2022 b<>com
@@ -28,6 +30,8 @@ package com.bcom.drimbox.pacs;
 import java.io.IOException;
 import java.net.URL;
 import java.security.GeneralSecurityException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -86,6 +90,7 @@ public class CMoveSCU {
 
 
 	public Multi<byte[]> cMove(String studyUID, String serieUID, List<String> transferSyntaxes)  {
+		Instant startTime = Instant.now();
 		// We start the cmove in another thread so we can return the Multi as soon as possible
 		vertx.executeBlocking(promise -> {
 					request = new Attributes(2);
@@ -95,18 +100,18 @@ public class CMoveSCU {
 
 					cStoreSCP.resetMultipart();
 					cStoreSCP.resetTransferSyntaxes(transferSyntaxes);
-					ExecutorService executor = Executors.newSingleThreadExecutor();
-					ScheduledExecutorService scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
+					ExecutorService executor = Executors.newFixedThreadPool(4);
+                    ScheduledExecutorService scheduledExecutor = Executors.newScheduledThreadPool(4);
 					try {
 						device = new Device("c-move-scu");
 						ae = new ApplicationEntity(this.callingAET);
+						setScheduledExecutor(scheduledExecutor);
 						Connection conn = new Connection();
 						device.addApplicationEntity(ae);
 						device.addConnection(conn);
 						ae.addConnection(conn);
 
 						setExecutor(executor);
-						setScheduledExecutor(scheduledExecutor);
 						doCMove();
 						cStoreSCP.done();
 					} catch (Exception e) {
@@ -116,9 +121,9 @@ public class CMoveSCU {
 						scheduledExecutor.shutdown();
 					}
 					promise.complete();
-				}, res -> Log.info("Cmove done")
-		);
+				}, res -> Log.info("Pacs cmove TimeTT : " + Duration.between(startTime, Instant.now()).toString())
 
+		);
 		return cStoreSCP.getResponseStream();
 	}
 
@@ -168,7 +173,7 @@ public class CMoveSCU {
 
 	public void setAttributeRequests(String[] args) {
 		this.request = new Attributes(args.length);
-		String type = "";
+		String type;
 		if (args.length == 1) {
 			type = "STUDY";
 		} else if (args.length == 2) {

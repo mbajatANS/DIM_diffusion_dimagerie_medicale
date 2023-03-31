@@ -1,6 +1,8 @@
 /*
  *  VIHFBase.java - DRIMBox
  *
+ * N°IDDN : IDDN.FR.001.020012.000.S.C.2023.000.30000
+ *
  * MIT License
  *
  * Copyright (c) 2022 b<>com
@@ -79,7 +81,7 @@ public abstract class VIHFBase {
         public String toString(){
             return this.fieldName;
         }
-        private AuthentificationMode(String fieldName){
+        AuthentificationMode(String fieldName){
             this.fieldName = fieldName;
         }
     }
@@ -273,7 +275,7 @@ public abstract class VIHFBase {
             transformer.transform(new DOMSource(element), new StreamResult(writer));
 
             PrintWriter printWriter = new PrintWriter(fileName);
-            Objects.requireNonNull(printWriter).println(writer.toString());
+            Objects.requireNonNull(printWriter).println(writer);
             printWriter.close();
         } catch (Exception e) {
             Log.info(e.getMessage());

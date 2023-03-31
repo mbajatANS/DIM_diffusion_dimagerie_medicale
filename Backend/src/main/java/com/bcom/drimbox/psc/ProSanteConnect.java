@@ -1,6 +1,8 @@
 /*
  *  ProSanteConnect.java - DRIMBox
  *
+ * N°IDDN : IDDN.FR.001.020012.000.S.C.2023.000.30000
+ *
  * MIT License
  *
  * Copyright (c) 2022 b<>com
@@ -47,6 +49,7 @@ import org.apache.http.impl.client.HttpClients;
 import org.apache.http.message.BasicNameValuePair;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
+import com.bcom.drimbox.DbMain;
 import com.bcom.drimbox.dmp.auth.WebTokenAuth;
 import com.bcom.drimbox.psc.tokens.AccessToken;
 import com.bcom.drimbox.psc.tokens.IdToken;
@@ -68,7 +71,15 @@ public class ProSanteConnect {
 	@Inject
 	WebTokenAuth webTokenAuth;
 
+	@Inject
+	DbMain dbMain;
+	
+	@ConfigProperty(name="ris.host")
+	String risHost;
 
+	@ConfigProperty(name="conso.host")
+	String consoHost;
+	
 	/**
 	 * Get user info based on the accessToken
 	 *
@@ -114,6 +125,9 @@ public class ProSanteConnect {
 			httpPost.setHeader("Content-Type", "application/x-www-form-urlencoded");
 			httpPost.setHeader(HttpHeaders.AUTHORIZATION, "Basic " + encoding);
 			List<NameValuePair> params = new ArrayList<>(1);
+			if(rawAccessToken.contains("Bearer")) {
+				rawAccessToken = rawAccessToken.split("Bearer ")[1];
+			}
 			params.add(new BasicNameValuePair("token", rawAccessToken));
 
 			httpPost.setEntity(new UrlEncodedFormEntity(params, "UTF-8"));
@@ -140,18 +154,31 @@ public class ProSanteConnect {
 	 *  Create authentication token in the backend to re-use later
 	 *
 	 * @param code Code value send from PSC
-	 * @param cookie Cookie ID of the client
+	 * @param cookieID Cookie ID of the client
 	 *
 	 * @return True if success, false otherwise
 	 */
 	public Boolean createAuthToken(String code, String cookieID) {
 		try {
+			
+			String redirectURI = "";
+
+			if(dbMain.getTypeDrimbBOX() == DbMain.DrimBOXMode.SOURCE) {
+				redirectURI = risHost + "/api";
+			}
+			else if (dbMain.getTypeDrimbBOX() == DbMain.DrimBOXMode.CONSO) {
+				redirectURI = consoHost + "/api";
+			}
+			else if (dbMain.getTypeDrimbBOX() == DbMain.DrimBOXMode.RIS) {
+				redirectURI = risHost + "/api";
+			}			
+			
 			HttpClient httpclient = HttpClients.createDefault();
 			HttpPost httppost = new HttpPost(baseURL + "token");
 			httppost.setHeader("Content-Type", "application/x-www-form-urlencoded");
 			List<NameValuePair> params = new ArrayList<>(2);
 			params.add(new BasicNameValuePair("grant_type", "authorization_code"));
-			params.add(new BasicNameValuePair("redirect_uri", "https://localhost/api"));
+			params.add(new BasicNameValuePair("redirect_uri", redirectURI));
 			params.add(new BasicNameValuePair("client_id", clientID));
 			params.add(new BasicNameValuePair("client_secret", clientSecret));
 			params.add(new BasicNameValuePair("code", code));

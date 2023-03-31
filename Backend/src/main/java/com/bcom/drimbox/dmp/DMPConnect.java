@@ -1,6 +1,8 @@
 /*
  *  DMPConnect.java - DRIMBox
  *
+ * N°IDDN : IDDN.FR.001.020012.000.S.C.2023.000.30000
+ *
  * MIT License
  *
  * Copyright (c) 2022 b<>com
@@ -27,6 +29,7 @@ package com.bcom.drimbox.dmp;
 
 import com.bcom.drimbox.dmp.request.BaseRequest;
 import com.bcom.drimbox.dmp.security.DMPKeyStore;
+import com.bcom.drimbox.dmp.xades.request.BaseXadesRequest;
 import io.quarkus.logging.Log;
 
 import javax.inject.Inject;
@@ -148,12 +151,85 @@ public class DMPConnect {
         }
     }
 
+    // Todo : factoriser code
+    public DMPResponse sendPostRequest(BaseXadesRequest request) {
+        // Try to connect
+        if (!connectPost(request.getServiceURL(), request)) {
+            throw new RuntimeException("Can't connect to DMP.");
+        }
+
+        try (OutputStream output = urlConn.getOutputStream()) {
+
+            DMPResponse response = new DMPResponse();
+            String requestStr = request.getRequest();
+
+            output.write(requestStr.getBytes(CHARSET));
+            response.statusCode = urlConn.getResponseCode();
+
+            BufferedReader in;
+
+            if (response.statusCode == 500 ) {
+                in = new BufferedReader(new InputStreamReader(urlConn.getErrorStream()));
+            } else {
+                in = new BufferedReader(new InputStreamReader(urlConn.getInputStream()));
+            }
+
+
+            String inputLine;
+            StringBuilder content = new StringBuilder();
+            while ((inputLine = in.readLine()) != null) {
+                content.append(inputLine);
+            }
+            in.close();
+            response.message = content.toString();
+
+            if (response.statusCode == 500 ) {
+                Log.error("DMP returned error 500 : " + response.message);
+            }
+
+            return response;
+
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private Boolean connectPost(String host, BaseXadesRequest request) {
+        try {
+            TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            tmf.init(dmpKeyStore.getTrustStore());
+
+            TrustManager[] tms = tmf.getTrustManagers();
+
+            SSLContext sslContext = SSLContext.getInstance("TLSv1.2");
+            sslContext.init(dmpKeyStore.getKeyManagers(), tms, new SecureRandom());
+
+            HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory());
+            URL url = new URL(host);
+
+            urlConn = (HttpsURLConnection) url.openConnection();
+            urlConn.setDoOutput(true);
+            urlConn.setRequestMethod("POST");
+            urlConn.setRequestProperty("Accept-Charset", String.valueOf(CHARSET));
+            urlConn.setRequestProperty("Content-Type", request.getContentType());
+            urlConn.setRequestProperty("Content-Length", String.valueOf(request.getContentLength()));
+            urlConn.setRequestProperty("Access-Control-Allow-Origin", "*");
+            urlConn.connect();
+
+            return true;
+        } catch (Exception e) {
+            Log.error(e.getMessage());
+        }
+        return false;
+    }
+
     /**
      * Used to parse the response given by the DMP (byte response)
      */
     public class DMPResponseBytes {
         public int statusCode;
         public byte[] rawMessage;
+        public String contentType;
     }
 
     /***
@@ -178,7 +254,7 @@ public class DMPConnect {
 
             output.write(requestStr.getBytes(CHARSET));
             response.statusCode = urlConn.getResponseCode();
-
+            response.contentType = urlConn.getHeaderField("Content-Type");
             response.rawMessage = urlConn.getInputStream().readAllBytes();
 
             return response;

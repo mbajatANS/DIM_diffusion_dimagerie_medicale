@@ -2,6 +2,8 @@
 /*
  *  DmpAPI.java - DRIMBox
  *
+ * N°IDDN : IDDN.FR.001.020012.000.S.C.2023.000.30000
+ *
  * MIT License
  *
  * Copyright (c) 2022 b<>com
@@ -26,9 +28,16 @@
 
 package com.bcom.drimbox.api;
 
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 import javax.inject.Inject;
+import javax.json.JsonObject;
+import javax.transaction.Transactional;
 import javax.ws.rs.CookieParam;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
@@ -38,15 +47,24 @@ import javax.ws.rs.core.Cookie;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
-import com.bcom.drimbox.dmp.request.BaseRequest;
-import com.bcom.drimbox.dmp.request.FindAllDocumentRequest;
-import com.bcom.drimbox.dmp.auth.WebTokenAuth;
 import com.bcom.drimbox.dmp.DMPConnect;
 import com.bcom.drimbox.dmp.DMPConnect.DMPResponseBytes;
+import com.bcom.drimbox.dmp.auth.WebTokenAuth;
+import com.bcom.drimbox.dmp.database.DatabaseManager;
+import com.bcom.drimbox.dmp.request.BaseRequest;
+import com.bcom.drimbox.dmp.request.FindAllDocumentRequest;
 import com.bcom.drimbox.dmp.request.FindFilterDocumentRequest;
 import com.bcom.drimbox.dmp.request.GiveAuthorizationRequest;
+import com.bcom.drimbox.dmp.request.ParameterList;
 import com.bcom.drimbox.dmp.request.RetrieveDocumentRequest;
 import com.bcom.drimbox.dmp.request.VerifyAuthorizationRequest;
+import com.bcom.drimbox.dmp.xades.file.CDAFile;
+import com.bcom.drimbox.dmp.xades.file.KOSFile;
+import com.bcom.drimbox.dmp.xades.request.BaseXadesRequest;
+import com.bcom.drimbox.dmp.xades.request.ProvideAndRegisterRequest;
+
+import io.quarkus.logging.Log;
+import org.dcm4che3.mime.MultipartParser;
 
 // Todo : find a prefix for those request, /dmp maybe ?
 @Path("/api")
@@ -58,10 +76,18 @@ public class DmpAPI {
 	@Inject
 	WebTokenAuth webTokenAuth;
 
+	@Inject
+	ParameterList parameterList;
+
+	@Inject
+	DatabaseManager databaseManager;
+
+	protected static final String FIELD_ACTIVITIES = "activities";
+
 	private enum returnType {
-		   STRING, RAWBYTES;
-		}
-	
+		STRING, RAWBYTES
+	}
+
 	@GET
 	@Path("/grant/{ins}")
 	@Produces(MediaType.TEXT_XML)
@@ -75,10 +101,10 @@ public class DmpAPI {
 	@Path("/query/{ins}")
 	@Produces(MediaType.TEXT_XML)
 	public Response query(String ins, @CookieParam("SessionToken") Cookie cookieSession, @QueryParam("modality") List<String> modalities,
-			@QueryParam("region") List<String> regions, @QueryParam("start") String start, @QueryParam("stop") String stop)  {
+			@QueryParam("region") List<String> regions, @QueryParam("start") String start, @QueryParam("stop") String stop, @QueryParam("accessionNumber") String accessionNumber)  {
 
-		if(!modalities.isEmpty() || !regions.isEmpty() || start != null || stop != null) {
-			FindFilterDocumentRequest request = new FindFilterDocumentRequest(ins, modalities, regions, start, stop);
+		if(!modalities.isEmpty() || !regions.isEmpty() || start != null || stop != null || accessionNumber != null) {
+			FindFilterDocumentRequest request = new FindFilterDocumentRequest(ins, modalities, regions, start, stop, accessionNumber);
 			return dmpRequest(request, ins, cookieSession, returnType.STRING);
 
 		}
@@ -88,22 +114,96 @@ public class DmpAPI {
 		}
 	}
 
+
+	private static final Map<String, KOSFile> kosReceived = new HashMap<>();
+
+	public static KOSFile getKOS(String studyUID) {
+		return kosReceived.get(studyUID);
+	}
+
+	private String getBoundary(String contentType) {
+		String[] respContentTypeParams = contentType.split(";");
+		for (String respContentTypeParam : respContentTypeParams)
+			if (respContentTypeParam.replace(" ", "").startsWith("boundary="))
+				return respContentTypeParam
+						.substring(respContentTypeParam.indexOf("=") + 1)
+						.replaceAll("\"", "");
+
+		return null;
+	}
+
 	@GET
 	@Path("/retrieve/{ins}")
 	@Produces(MediaType.TEXT_XML)
 	public Response retrieve(String ins, @QueryParam("repositoryId") String repositoryId, @QueryParam("uniqueId") String uniqueId, @CookieParam("SessionToken") Cookie cookieSession)  {
 		RetrieveDocumentRequest request = new RetrieveDocumentRequest(repositoryId, uniqueId);
-		return dmpRequest(request, ins, cookieSession, returnType.RAWBYTES);
+
+
+		Response r = dmpRequest(request, ins, cookieSession, returnType.RAWBYTES);
+		var contentTypeObject = r.getHeaders().get("Content-Type");
+		if (contentTypeObject == null) {
+			Log.error("Request don't have a content type can't build retrieve KOS");
+		} else {
+			String contentType = (String)contentTypeObject.get(0);
+			String boundary = getBoundary(contentType);
+			if (boundary == null) {
+				Log.error("Invalid boundary in contentType. Can't unpack KOS.");
+			}
+			try {
+				new MultipartParser(boundary).parse(new ByteArrayInputStream((byte[]) r.getEntity()), (partNumber, multipartInputStream) -> {
+					// We need to call this to get read of the header params to ensure we only have the KOS left in multipartInputStream
+					Map<String, List<String>> headerParams = multipartInputStream.readHeaderParams();
+					// We look for the KOS
+					if (headerParams.get("content-type").get(0).equals("application/octet-stream")) {
+						KOSFile kos = new KOSFile(multipartInputStream.readAllBytes());
+						kosReceived.put(kos.getStudyUID(), kos);
+					}
+				});
+
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+
+		return r;
 	}
 
 	@GET
 	@Path("/verify/{ins}")
 	@Produces(MediaType.TEXT_XML)
-	public Response verify(String ins, @CookieParam("SessionToken") Cookie cookieSession)  {
+	public Response verify(String ins, @CookieParam("SessionToken") Cookie cookieSession, @QueryParam("uuid") String uuid)  {
 		VerifyAuthorizationRequest request = new VerifyAuthorizationRequest(ins);
+		if(Objects.equals(webTokenAuth.getSecteurActivite(cookieSession.getValue()), "empty") && !Objects.equals(this.parameterList.getSituation(uuid), "empty")) {
+			JsonObject exercices = webTokenAuth.getUserInfo(cookieSession.getValue()).getJsonObject("SubjectRefPro").getJsonArray("exercices").getJsonObject(0);
+			JsonObject activites = null;
+			for (int i=0; i < exercices.getJsonArray(FIELD_ACTIVITIES).size(); i++) {
+				if(exercices.getJsonArray(FIELD_ACTIVITIES).getJsonObject(i).getString("ancienIdentifiantDeLaStructure").equals(this.parameterList.getSituation(uuid)))
+					activites = exercices.getJsonArray(FIELD_ACTIVITIES).getJsonObject(i);
+			}
+			if (activites != null) {
+				webTokenAuth.setSecteurActivite(cookieSession.getValue(), activites.getString("raisonSocialeSite"));
+			}
+		}
 		return dmpRequest(request, ins, cookieSession, returnType.STRING);
 	}
 
+
+
+
+	@Transactional
+	@GET
+	@Path("/provide")
+	public Response xadesReq(String ins, @CookieParam("SessionToken") Cookie cookieSession)  {
+		CDAFile c = new CDAFile(new File(getClass().getClassLoader().getResource("cda.xml").getPath()));
+		KOSFile k = new KOSFile(new File(getClass().getClassLoader().getResource("kos.dcm").getPath()));
+		ProvideAndRegisterRequest request = new ProvideAndRegisterRequest(c, k);
+
+		if ( ! databaseManager.addEntity(c, k, request.getRequest().getBytes())) {
+			Log.warn("Can't add KOS to BDD. Study UID : " + c.getStudyID());
+		}
+
+		return dmpRequest(request, cookieSession);
+	}
 
 	/**
 	 * Make a request to the DMP
@@ -134,8 +234,21 @@ public class DmpAPI {
 				// To retrieve a file (cda or kos), we need to have it in byteArray format to not lose information
 				if (returnObject == returnType.RAWBYTES) {
 					DMPResponseBytes response = dmpConnect.sendKOSRequest(request);
-					return Response.ok(response.rawMessage).build();
+					return Response.ok(response.rawMessage).header("Content-Type", response.contentType).build();
 				}
+			}
+		}
+
+		return Response.status(401).build();
+	}
+
+	private Response dmpRequest(BaseXadesRequest request, Cookie cookieSession) {
+		if(cookieSession != null) {
+			String cookieID = cookieSession.getValue();
+
+			if (webTokenAuth.clientRegistered(cookieID)) {
+				DMPConnect.DMPResponse response = dmpConnect.sendPostRequest(request);
+				return Response.ok(response.message).build();
 			}
 		}
 

@@ -1,6 +1,8 @@
 /*
  *  VIHF.java - DRIMBox
  *
+ * N°IDDN : IDDN.FR.001.020012.000.S.C.2023.000.30000
+ *
  * MIT License
  *
  * Copyright (c) 2022 b<>com
@@ -166,7 +168,7 @@ public class VIHF extends VIHFBase {
      * @return KeyInfo saml node
      */
     private KeyInfo getKeyInfo(Credential credential) {
-        KeyInfo keyinfo = null;
+        KeyInfo keyinfo;
         X509KeyInfoGeneratorFactory factory;
         factory = new X509KeyInfoGeneratorFactory();
         factory.setEmitEntityCertificate(true);
@@ -294,7 +296,7 @@ public class VIHF extends VIHFBase {
      * @param commonVIHFAttributeList list of vihf common attribute ({@code <samlFieldName code="xx".../>})
      */
     private void addSamlCommonCodeAttribute(String samlFieldName, VIHFField vihfField, List<? extends CommonVIHFAttribute> commonVIHFAttributeList) {
-        Attribute attrGroups = (Attribute) attributeBuilder.buildObject();
+        Attribute attrGroups = attributeBuilder.buildObject();
         attrGroups.setName(vihfField.toString());
         XMLObjectBuilder<XSAny> xsAnyBuilder = Configuration.getBuilderFactory().getBuilder(XSAny.TYPE_NAME);
         for(CommonVIHFAttribute commonCode:commonVIHFAttributeList){

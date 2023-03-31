@@ -1,6 +1,8 @@
 /*
  *  BaseRequest.java - DRIMBox
  *
+ * N°IDDN : IDDN.FR.001.020012.000.S.C.2023.000.30000
+ *
  * MIT License
  *
  * Copyright (c) 2022 b<>com
@@ -108,6 +110,8 @@ public abstract class BaseRequest {
 		}
 
 		soapRequest = docBuilder.newDocument();
+		//         // Omit standalone declaration https://stackoverflow.com/questions/8438105/how-to-remove-standalone-attribute-declaration-in-xml-document
+		soapRequest.setXmlStandalone(true);
 
 		initEnvelope();
 		initHeader();
@@ -157,7 +161,7 @@ public abstract class BaseRequest {
 	/**
 	 * Initialize the Envelope component
 	 */
-	private void initEnvelope() {
+	protected void initEnvelope() {
 		envelope = soapRequest.createElement("soap:Envelope");
 		envelope.setAttribute("xmlns:soap", "http://www.w3.org/2003/05/soap-envelope");
 		envelope.setAttribute("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance");
@@ -394,4 +398,6 @@ public abstract class BaseRequest {
 		Node vihfXMLNode = soapRequest.importNode(vihf.getVIHF(), true);
 		securityNode.appendChild(vihfXMLNode);
 	}
+
+
 }

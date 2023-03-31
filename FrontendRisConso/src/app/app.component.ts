@@ -42,11 +42,7 @@ export class AppComponent {
   // tab with all activity struct from the user connected
   secteurActs: string[] = [];
   // struct chosen by user
-  selectedStruct: string | undefined;
-  // auth date of user
-  dateAuth: string;
-  // name + surname of user
-  authenticator: string;
+  selectedStruct = '';
   // displaying ris component
   ris = true;
 
@@ -57,8 +53,6 @@ export class AppComponent {
    * @param route to manage angular routes
    */
   constructor(private readonly http: HttpClient, private readonly cookieService: CookieService, private readonly route: ActivatedRoute) {
-    this.authenticator = localStorage.getItem('currentUser') || '{}';
-    this.dateAuth = localStorage.getItem('dateAuth') || '{}';
 
     this.route.queryParams.subscribe(params => {
       // Generate sessionToken
@@ -83,12 +77,6 @@ export class AppComponent {
       }
 
       else if (data.startsWith("connected but no structure : ")) {
-        // Set username and authDate
-        localStorage.setItem('currentUser', data.split('&')[1]);
-        localStorage.setItem('dateAuth', data.split('&')[2]);
-        this.authenticator = localStorage.getItem('currentUser') || '{}';
-        this.dateAuth = localStorage.getItem('dateAuth') || '{}';
-
         this.askStructure();
       }
 
@@ -120,16 +108,16 @@ export class AppComponent {
    * */
   sendSect() {
     // verify a structure is selected
-    if (this.selectedStruct !== undefined) {
+    if (this.selectedStruct !== '') {
 
       this.http.get('/api/location?workLocation=' + this.selectedStruct, { responseType: 'text' }).subscribe(data => {
         // If "Success" response, struct is uptated in back
-        if (data === "Success") {
+        if (data.startsWith("Success")) {
           // Hide struct panel
+          this.selectedStruct = data.split(" ")[1];
           this.structurePanel = false;
-          // Displaying ris screen and redirect to /ris
+          // Displaying ris screen
           this.ris = true;
-          window.location.replace("https://localhost/ris");
         }
       });
     }

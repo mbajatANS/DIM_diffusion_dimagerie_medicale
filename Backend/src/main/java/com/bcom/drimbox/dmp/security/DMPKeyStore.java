@@ -1,6 +1,8 @@
 /*
  *  DMPKeyStore.java - DRIMBox
  *
+ * N°IDDN : IDDN.FR.001.020012.000.S.C.2023.000.30000
+ *
  * MIT License
  *
  * Copyright (c) 2022 b<>com
@@ -139,6 +141,20 @@ public final class DMPKeyStore {
         try {
             X509Certificate cert = (X509Certificate) signStore.getCertificate(signStore.aliases().nextElement());
             return cert.getSubjectX500Principal().toString();
+        } catch (KeyStoreException e) {
+            Log.error(e.getMessage());
+        }
+        return "";
+    }
+
+    /**
+     * Get issuerDN used in XaDeS signatures
+     * @return Issuer DN
+     */
+    public String getIssuerDN() {
+        try {
+            X509Certificate cert = (X509Certificate) signStore.getCertificate(signStore.aliases().nextElement());
+            return cert.getIssuerDN().toString();
         } catch (KeyStoreException e) {
             Log.error(e.getMessage());
         }

@@ -24,12 +24,14 @@
  */
 
 import { Component, OnInit, ElementRef, AfterViewInit } from '@angular/core';
-import { UntypedFormControl } from '@angular/forms';
+import { FormControl, UntypedFormControl } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { CheckAccessService } from './check-access.service';
 import { DocumentsService } from './documents.service';
 import { DatePipe } from '@angular/common';
 import { MAT_DATE_FORMATS } from '@angular/material/core';
+import { HttpClient } from '@angular/common/http';
+import { empty } from 'rxjs';
 
 // See the Moment.js docs for the meaning of these formats:
 // https://momentjs.com/docs/#/displaying/format/
@@ -58,13 +60,18 @@ export const MY_FORMATS = {
 })
 export class RequestComponent implements OnInit, AfterViewInit {
 
+  uuid: string;
+
   // boolean to display error message
   accessError = false;
+  accessUnknown = false;
 
   // consent value retrieve in url parameter
   consent: string;
   // ins retrieved in url parameter
   ins: string;
+
+  accessionNumber: string;
 
   regions = new UntypedFormControl('');
   regionsList: string[] = ['Abdomen + pelvis', 'Corps entier', 'Membres superieurs', 'Membres inferieurs', 'Tete', 'Thorax'];
@@ -76,7 +83,7 @@ export class RequestComponent implements OnInit, AfterViewInit {
   stopDate = new UntypedFormControl();
 
   // table headers
-  headElements = ['Examens', 'Date', 'CR', 'PACS', 'Visionneuse'];
+  headElements = ['Examens', 'Date', 'CR', 'Visionneuse', 'PACS'];
   headElementsPatient = ['Nom', 'Prenom', 'Sexe', 'Date de naissance', 'INS'];
   headSerieElemKOS = ['Description', 'Localisation', 'Modalité', 'Nombre d\images'];
 
@@ -95,7 +102,7 @@ export class RequestComponent implements OnInit, AfterViewInit {
    * @param documentsService to documents component
    * @param elementRef to change css
    */
-  constructor(private readonly route: ActivatedRoute, private readonly checkAccessService: CheckAccessService,
+  constructor(private readonly route: ActivatedRoute, private readonly http: HttpClient, private readonly checkAccessService: CheckAccessService,
     public documentsService: DocumentsService, private readonly elementRef: ElementRef) {
   }
 
@@ -103,20 +110,71 @@ export class RequestComponent implements OnInit, AfterViewInit {
    * On Init, retrieve url param and check auth and right to access
    * */
   async ngOnInit() {
-    this.route.queryParams.subscribe(params => {
-      this.ins = params['ins'];
-      this.consent = params['consent'];
-    });
+    this.route.queryParams.subscribe(async params => {
+      this.uuid = params['uuid'];
+      let auth = "";
+      if (this.ins === undefined && this.uuid !== undefined) {
+        this.ins = await this.retrieveINS();
+        this.consent = await this.retrieveConsent();
+        auth = await this.checkAccessService.td0_2(this.ins, this.consent, this.uuid);
+      }
 
-    if (this.ins !== undefined) {
-      // Check access to patient dmp
-      const auth = await this.checkAccessService.td0_2(this.ins, this.consent);
+
       if (auth === "ok") {
-        this.documentsService.td3_1(this.ins);
+        await this.checkFilters();
+
+        this.filterSearch();
       }
       else if (auth === "no access") {
         this.accessError = true;
       }
+      else if (auth === "unknown") {
+        this.accessUnknown = true;
+      }
+    });
+  }
+
+  async retrieveINS() {
+    const response = await this.http.get('/parameters/ins?uuid=' + this.uuid, { responseType: 'text' }).toPromise();
+    return response;
+  }
+
+  async retrieveConsent() {
+    const response = await this.http.get('/parameters/consent?uuid=' + this.uuid, { responseType: 'text' }).toPromise();
+    return response;
+  }
+
+  async checkFilters() {
+    const response = await this.http.get('/parameters/filter?uuid=' + this.uuid, { responseType: 'text' }).toPromise();
+
+    if (response.includes("modality")) {
+      this.modalites.setValue([response.split("modality=")[1].split("/")[0]]);
+    }
+    if (response.includes("anatomicRegion")) {
+      this.regions.setValue([response.split("anatomicRegion=")[1].split("/")[0]]);
+    }
+    if (response.includes("accessionNumber")) {
+      this.accessionNumber = response.split("accessionNumber=")[1].split("/")[0];
+    }
+    if (response.includes("studyDate")) {
+
+      const dates = response.split("studyDate=")[1].split("/")[0];
+
+      if (dates.includes("-")) {
+        // this.stopDate.setValue([new DatePipe('en').transform(dates.split("-")[1], 'dd/MM/YYYY')]);
+        const endDate = dates.split("-")[1];
+        this.stopDate = new FormControl(new Date(endDate.substr(0, 4) + "-" + endDate.substr(4, 2) + "-" + endDate.substr(6)));
+
+        if (dates.includes("-")) {
+          const beginDate = dates.split("-")[0];
+          this.startDate = new FormControl(new Date(beginDate.substr(0, 4) + "-" + beginDate.substr(4, 2) + "-" + beginDate.substr(6)));
+
+        }
+      }
+      else {
+        this.startDate = new FormControl(new Date(dates.substr(0, 4) + "-" + dates.substr(4, 2) + "-" + dates.substr(6)));
+      }
+
     }
   }
 
@@ -128,12 +186,12 @@ export class RequestComponent implements OnInit, AfterViewInit {
     const stopDateFormat = new DatePipe('en').transform(this.stopDate.value, 'yyyyMMdd');
 
     // Check if filters selected, if not classic request
-    if (this.modalites.value.length === 0 && this.regions.value.length === 0 && startDateFormat === null && stopDateFormat === null) {
+    if (this.modalites.value.length === 0 && this.regions.value.length === 0 && startDateFormat === null && stopDateFormat === null && this.accessionNumber === undefined) {
       this.documentsService.td3_1(this.ins);
     }
     // Request with filters
     else {
-      this.documentsService.td3_1Filters(this.ins, this.modalites.value, this.regions.value, startDateFormat, stopDateFormat);
+      this.documentsService.td3_1Filters(this.ins, this.modalites.value, this.regions.value, startDateFormat, stopDateFormat, this.accessionNumber);
     }
   }
 

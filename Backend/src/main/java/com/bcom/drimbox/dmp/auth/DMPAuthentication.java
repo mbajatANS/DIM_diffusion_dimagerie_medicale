@@ -1,6 +1,8 @@
 /*
  *  DMPAuthentication.java - DRIMBox
  *
+ * N°IDDN : IDDN.FR.001.020012.000.S.C.2023.000.30000
+ *
  * MIT License
  *
  * Copyright (c) 2022 b<>com
@@ -28,6 +30,7 @@ package com.bcom.drimbox.dmp.auth;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.Objects;
 import java.util.UUID;
 
 import javax.inject.Inject;
@@ -73,6 +76,11 @@ public class DMPAuthentication {
 	@ConfigProperty(name="ris.host")
 	String risHost;
 
+	@ConfigProperty(name="conso.host")
+	String consoHost;
+
+	String uuid;
+	
 	/**
 	 * Redirect to RIS page after PSC authentication
 	 *
@@ -83,8 +91,7 @@ public class DMPAuthentication {
 	 */
 	@GET
 	@Produces(MediaType.TEXT_HTML)
-	public Response getLandingPage(@QueryParam("code") String code, @CookieParam("SessionToken") Cookie cookieSession, @QueryParam("state") String state) {
-
+	public Response getLandingPage(@QueryParam("code") String code, @CookieParam("SessionToken") Cookie cookieSession, @QueryParam("state") String state, @QueryParam("uuid") String uuid) {
 		if (cookieSession != null) {
 			String cookieID = cookieSession.getValue();
 			if(webTokenAuth.clientRegistered(cookieID)) {
@@ -99,13 +106,16 @@ public class DMPAuthentication {
 
 		try {
 			String url = "";
-			
+
 			if(dbMain.getTypeDrimbBOX() == DbMain.DrimBOXMode.SOURCE) {
 				url = risHost + "/IHEInvokeImageDisplay";
 			}
 			else if (dbMain.getTypeDrimbBOX() == DbMain.DrimBOXMode.CONSO) {
-				url = risHost + "/ris";
+				url = consoHost + "?uuid=" + this.uuid;
 			}
+			else if (dbMain.getTypeDrimbBOX() == DbMain.DrimBOXMode.RIS) {
+				url = risHost + "/ris";
+			}			
 			URI uri = new URI(url);
 			return Response.temporaryRedirect(uri).build();
 		} catch (URISyntaxException e) {
@@ -120,11 +130,10 @@ public class DMPAuthentication {
 	 *
 	 * @param cookieSession Cookie sent from front app
 	 * @return 200 ok with connected state
-	 * @throws Exception
 	 */
 	@Path("/auth")
 	@GET
-	public Response authCheck(@CookieParam("SessionToken") Cookie cookieSession, @QueryParam("ins") String ins) throws Exception {
+	public Response authCheck(@CookieParam("SessionToken") Cookie cookieSession, @QueryParam("uuid") String uuid) {
 		if (cookieSession == null)
 			return Response.serverError().build();
 
@@ -138,7 +147,7 @@ public class DMPAuthentication {
 			Long epoch = webTokenAuth.getAccessToken(cookieID).getAuthTime();
 			String date = new java.text.SimpleDateFormat("MM/dd/yyyy HH:mm:ss").format(new java.util.Date (epoch*1000));
 
-			if(webTokenAuth.getSecteurActivite(cookieID)!= "empty")
+			if(!Objects.equals(webTokenAuth.getSecteurActivite(cookieID), "empty"))
 				return Response.ok("connected").build();
 
 			else
@@ -153,8 +162,18 @@ public class DMPAuthentication {
 			authentServ.setNonce(nonce);
 			authentServ.setState(state);
 			webTokenAuth.registerClient(cookieID, authentServ);
+			String redirectURI = "";
+			if(dbMain.getTypeDrimbBOX() == DbMain.DrimBOXMode.SOURCE) {
+				redirectURI = risHost + "/api";
+			}
+			else if (dbMain.getTypeDrimbBOX() == DbMain.DrimBOXMode.CONSO) {
+				redirectURI = consoHost + "/api";
+			}
+			else if (dbMain.getTypeDrimbBOX() == DbMain.DrimBOXMode.RIS) {
+				redirectURI = risHost + "/api";
+			}
+			this.uuid = uuid;
 
-			String redirectURI = risHost + "/api";
 			var url = baseURL + "?response_type=" + responseType + "&client_id=" + clientID + "&redirect_uri=" + redirectURI + "&scope=openid " + scopes + "&acr_values=" + acrValues + "&state=" + state + "&nonce=" + nonce;
 			return Response.ok("no connected : " + url).build();
 

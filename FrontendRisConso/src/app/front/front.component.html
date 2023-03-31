@@ -54,7 +54,7 @@
       <td>En salle d'attente</td>
       <td>A réaliser</td>
       <td>
-        <button mat-raised-button color="success" title="Consulter" (click)="goToUser()">consulter</button>
+        <button mat-raised-button [matMenuTriggerFor]="menu">Visualiser</button>
       </td>
     </tr>
     <tr>
@@ -66,7 +66,7 @@
       <td>Acquis</td>
       <td>Validé</td>
       <td>
-        <button mat-raised-button color="success" title="Consulter" (click)="goToUser()">consulter</button>
+        <button mat-raised-button [matMenuTriggerFor]="menu">Visualiser</button>
       </td>
     </tr>
     <tr>
@@ -78,7 +78,7 @@
       <td>Acquis</td>
       <td>Tapé</td>
       <td>
-        <button mat-raised-button color="success" title="Consulter" (click)="goToUser()">consulter</button>
+        <button mat-raised-button [matMenuTriggerFor]="menu">Visualiser</button>
       </td>
     </tr>
     <tr>
@@ -90,7 +90,7 @@
       <td>Acquis</td>
       <td>Validé</td>
       <td>
-        <button mat-raised-button color="success" title="Consulter" (click)="goToUser()">consulter</button>
+        <button mat-raised-button [matMenuTriggerFor]="menu">Visualiser</button>
       </td>
     </tr>
     <tr>
@@ -102,7 +102,7 @@
       <td>Acquis</td>
       <td>Tapé</td>
       <td>
-        <button mat-raised-button color="success" title="Consulter" (click)="goToUser()">consulter</button>
+        <button mat-raised-button [matMenuTriggerFor]="menu">Visualiser</button>
       </td>
     </tr>
     <tr>
@@ -114,8 +114,15 @@
       <td>Acquis</td>
       <td>Validé</td>
       <td>
-        <button mat-raised-button color="success" title="Consulter" (click)="goToUser()">consulter</button>
+        <button mat-raised-button [matMenuTriggerFor]="menu">Visualiser</button>
       </td>
     </tr>
   </tbody>
 </table>
+
+<mat-menu #menu="matMenu">
+  <button mat-menu-item (click)="goToUser1()">Modalités</button>
+  <button mat-menu-item (click)="goToUser3()">Régions anatomiques</button>
+  <button mat-menu-item (click)="goToUser4()">2 dernières années</button>
+  <button mat-menu-item (click)="goToUser2()">Examens</button>
+</mat-menu>

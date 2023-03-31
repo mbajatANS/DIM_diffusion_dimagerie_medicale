@@ -1,6 +1,8 @@
 /*
  *  StowRs.java - DRIMBox
  *
+ * N°IDDN : IDDN.FR.001.020012.000.S.C.2023.000.30000
+ *
  * MIT License
  *
  * Copyright (c) 2022 b<>com
@@ -53,9 +55,6 @@ public class StowRs {
 
 	@ConfigProperty(name = "pacs.baseUrl")
 	String baseUrl;
-
-	// Cache of instance datas
-	@Inject PacsCache pacsCache;
 
 	// Boundary for multipart request
 	private static final String BOUNDARY = "myBoundary";

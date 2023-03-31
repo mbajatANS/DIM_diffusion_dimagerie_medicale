@@ -147,7 +147,7 @@ export class DocumentsService {
  * Initiate 3_1 request to retrieve list of documents filters from patient
  * @param ins of the patient
  */
-  td3_1Filters(ins: string, modalities: string[], regions: string[], startDate: string, stopDate: string) {
+  td3_1Filters(ins: string, modalities: string[], regions: string[], startDate: string, stopDate: string, accessionNumber: string) {
     this.ins = ins;
     // Clear list of documents
     this.kosDocs = [];
@@ -174,7 +174,10 @@ export class DocumentsService {
       filterparam += `&stop=${stopDate}0000`;
     }
 
- //   console.log(filterparam);
+    if (accessionNumber !== undefined) {
+      filterparam += `&accessionNumber=${accessionNumber}`;
+    }
+
     this.http.get(`/api/query/${ins}?${filterparam.substr(1)}`, { responseType: 'text' }).subscribe(data => {
       this.parsing3_1Response(data);
     },
@@ -278,7 +281,7 @@ export class DocumentsService {
       descriptionValue = metadataDoc.split("<ns4:Name>")[1].split("value=\"")[1].split("\"")[0];
     }
     const dateExamValue = metadataDoc.split("creationTime")[1].split("Value>")[1].split("<")[0];
-    const access = metadataDoc.split("accession")[0].split("referenceIdList")[1].split("<ns4:Value>");
+    const access = metadataDoc.split("referenceIdList")[1].split("</ns4:ValueList>")[0].split("<ns4:Value>");
     const retrieveUrl = metadataDoc.split("uniqueId")[0].split("referenceIdList")[1].split("<ns4:Value>");
     let accessi = '';
     let retri = '';
@@ -292,11 +295,8 @@ export class DocumentsService {
     for (const y of retrieveUrl) {
       if (y.includes("studyInstanceUID")) {
         retri = y.split("^")[0];
-      //  console.log(retri);
       }
     }
-    console.log(accessi);
-
     // Add cda document
     if (mimeTypeValue === mimeTypeEnum.xml) {
       const temp = {
@@ -344,7 +344,6 @@ export class DocumentsService {
         }
 
       });
-
       const temp = {
         uniqueId: documentId,
         repositoryId: repoId,
@@ -464,6 +463,14 @@ export class DocumentsService {
     catch (ex) {
       console.log('Error parsing byte stream', ex);
     }
+
+    // Sort kos by serieDescription
+    doc.series.sort((a, b) => {
+      if (a.serieDescription < b.serieDescription) return 1;
+      else if (a.serieDescription > b.serieDescription) return -1;
+      else return 0;
+    });
+
   }
 
   /**
@@ -476,7 +483,6 @@ export class DocumentsService {
     // First we need to convert the request into a string so we can extract the PDF in base64
     const blob = new Blob([new Uint8Array(response)], { type: 'text/plain; charset=utf-8' });
     blob.text().then(text => {
-      console.log(text);
       if (text.search("application/pdf") !== -1) {
         // Indexes
         const firstPDFTag = "representation=\"B64\">";
@@ -489,7 +495,7 @@ export class DocumentsService {
         //window.open("data:application/pdf;base64, " + encodeURI(strPdfFile))
         doc.rapports.push({
           pdfValue: strPdfFile,
-          auteur: `${text.split("<author>")[1].split("<family>")[1].split("</family>")[0]} ${text.split("<author>")[1].split("<given>")[1].split("</given>")[0]}`,
+          auteur: `${text.split("<author>")[1].split("<family")[1].split("</family>")[0]} ${text.split("<author>")[1].split("<given>")[1].split("</given>")[0]}`,
           description: text.split("<title>")[1].split("</title>")[0]
         });
         // Or make it in a embed element if you prefer
@@ -511,7 +517,7 @@ export class DocumentsService {
     let urlRetrieve = retrieveURL;
 
     const drimboxConso = "localhost:8081";
-    const drimboxSource = "10.53.0.72:8082";
+    const drimboxSource = "localhost:8082";
     const viewerURL = "localhost:3000";
     if (retrieveURL.includes("series")) {
       urlRetrieve = retrieveURL.split("/studies/")[1].split("/series")[0];
@@ -524,7 +530,7 @@ export class DocumentsService {
    * Call backend to import study/serie to local pacs
    * */
   ImportStow() {
-    const drimboxSource = "10.53.0.72:8082";
+    const drimboxSource = "localhost:8082";
     if (!this.openImportSerie) {
       this.http.get(`/api/stow/${drimboxSource}?studyUID=${this.studyInstanceLocal}`).subscribe(data => console.log("data"));
     }

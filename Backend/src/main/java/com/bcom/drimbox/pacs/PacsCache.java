@@ -1,6 +1,8 @@
 /*
  *  PacsCache.java - DRIMBox
  *
+ * N°IDDN : IDDN.FR.001.020012.000.S.C.2023.000.30000
+ *
  * MIT License
  *
  * Copyright (c) 2022 b<>com
@@ -27,7 +29,6 @@ package com.bcom.drimbox.pacs;
 
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.HashMap;
@@ -41,11 +42,12 @@ import javax.inject.Singleton;
 
 import com.bcom.drimbox.api.DRIMboxConsoAPI;
 import com.bcom.drimbox.utils.PrefixConstants;
+
+import org.apache.http.HttpHeaders;
 import org.dcm4che3.data.Attributes;
 import org.dcm4che3.data.Tag;
 import org.dcm4che3.data.UID;
 import org.dcm4che3.io.DicomInputStream;
-import org.dcm4che3.mime.MultipartInputStream;
 import org.dcm4che3.mime.MultipartParser;
 
 import io.quarkus.logging.Log;
@@ -88,10 +90,11 @@ public class PacsCache {
 	 * This function is non-blocking and will be executed in another thread
 	 *
 	 * @param drimboxSourceURL Source drimbox URL
+	 * @param accessToken PCS access token that will be verified
 	 * @param studyUID Study UID
 	 * @param seriesUID Series UID
 	 */
-	public void addNewEntry(String drimboxSourceURL, String studyUID, String seriesUID) {
+	public void addNewEntry(String drimboxSourceURL, String accessToken, String studyUID, String seriesUID) {
 		// Do not rebuild if already here
 		if (dicomCache.containsKey(studyUID) && dicomCache.get(studyUID).containsKey(seriesUID))
 			return;
@@ -109,7 +112,7 @@ public class PacsCache {
 			else {
 				dicomCache.put(studyUID, map);
 			}
-			buildEntry(drimboxSourceURL, studyUID, seriesUID);
+			buildEntry(drimboxSourceURL, accessToken, studyUID, seriesUID);
 
 			promise.complete();
 		}, res -> 
@@ -149,19 +152,13 @@ public class PacsCache {
 		} else {
 			Log.info("[CACHE] Waiting for : " + instanceUID);
 			waitingFutures.put(instanceUID, completableFuture);
-			//			vertx.eventBus().consumer(instanceUID).handler( m-> {
-			//				Log.info("[CACHE] Sending image : " + instanceUID);
-			//				completableFuture.complete((byte[]) m.body());
-			//			}
-			//					);
-			//
 		}
 
 		return completableFuture;
 	}
 
 	private interface BoundaryFunc { String getBoundary(String contentType); }
-	private void buildEntry(String drimboxSourceURL, String studyUID, String seriesUID) {
+	private void buildEntry(String drimboxSourceURL, String accessToken, String studyUID, String seriesUID) {
 		String serviceURL = DRIMboxConsoAPI.HTTP_PROTOCOL + drimboxSourceURL + "/" + PrefixConstants.DRIMBOX_PREFIX + "/" + PrefixConstants.STUDIES_PREFIX + "/" + studyUID + "/series/" + seriesUID;
 		//String serviceURL = "http://localhost:8081/dcm4chee-arc/aets/AS_RECEIVED/rs"  + "/" + STUDIES_PREFIX + "/" + studyUID + "/series/" + seriesUID;
 		try {
@@ -178,8 +175,10 @@ public class PacsCache {
 			final URL url = new URL(serviceURL);
 			final HttpURLConnection connection = (HttpURLConnection) url.openConnection();
 		    for (Map.Entry<String, String> entry : transferSyntaxes.entrySet()) {
-				connection.addRequestProperty("Accept", "multipart/related; type=\"application/dicom\";transfer-syntax="+entry.getKey()+";q="+entry.getValue()+";boundary=" + BOUNDARY);
+				connection.addRequestProperty(HttpHeaders.ACCEPT, "multipart/related; type=\"application/dicom\";transfer-syntax="+entry.getKey()+";q="+entry.getValue()+";boundary=" + BOUNDARY);
 		    }
+			connection.setRequestProperty(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken);
+			connection.setRequestProperty("KOS-SOPInstanceUID", seriesUID);
 
 			BoundaryFunc boundaryManager = (String contentType) -> {
 				String[] respContentTypeParams = contentType.split(";");
@@ -200,28 +199,26 @@ public class PacsCache {
 
 			DicomCacheInstance dc = getCacheInstance(studyUID, seriesUID);
 
-			new MultipartParser(boundary).parse(new BufferedInputStream(connection.getInputStream()), new MultipartParser.Handler() {
-				@Override
-				public void bodyPart(int partNumber, MultipartInputStream multipartInputStream) throws IOException {
-					Map<String, List<String>> headerParams = multipartInputStream.readHeaderParams();
-					try {
-						byte[] rawDicomFile = multipartInputStream.readAllBytes();
-						DicomInputStream dis = new DicomInputStream(new ByteArrayInputStream(rawDicomFile));
-						Attributes dataSet = dis.readDataset();
-						String instanceUID = dataSet.getString(Tag.SOPInstanceUID);
+			new MultipartParser(boundary).parse(new BufferedInputStream(connection.getInputStream()), (partNumber, multipartInputStream) -> {
+				Map<String, List<String>> headerParams = multipartInputStream.readHeaderParams();
+				try {
+					//Log.info("Image time : " + Duration.between(startTime, Instant.now()).toString());
+					byte[] rawDicomFile = multipartInputStream.readAllBytes();
+					DicomInputStream dis = new DicomInputStream(new ByteArrayInputStream(rawDicomFile));
+					Attributes dataSet = dis.readDataset();
+					String instanceUID = dataSet.getString(Tag.SOPInstanceUID);
 
-						//Log.info("[CACHE] Received file " + instanceUID);
-						dc.dicomFiles.put(instanceUID, rawDicomFile);
+					//Log.info("[CACHE] Received file " + instanceUID);
+					dc.dicomFiles.put(instanceUID, rawDicomFile);
 
-						if (waitingFutures.containsKey(instanceUID)) {
-							//Log.info("[CACHE] Publish file " + instanceUID);
-							waitingFutures.get(instanceUID).complete(rawDicomFile);
-							waitingFutures.remove(instanceUID);
-						}
-
-					} catch (Exception e) {
-						Log.fatal("Failed to process Part #" + partNumber + headerParams, e);
+					if (waitingFutures.containsKey(instanceUID)) {
+						//Log.info("[CACHE] Publish file " + instanceUID);
+						waitingFutures.get(instanceUID).complete(rawDicomFile);
+						waitingFutures.remove(instanceUID);
 					}
+
+				} catch (Exception e) {
+					Log.fatal("Failed to process Part #" + partNumber + headerParams, e);
 				}
 			});
 

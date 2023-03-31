@@ -10,6 +10,7 @@ release.properties
 .classpath
 .settings/
 bin/
+!docker/network/docker-tc/bin
 
 # IntelliJ
 .idea

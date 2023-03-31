@@ -25,7 +25,7 @@
 
 import { HttpClient } from '@angular/common/http';
 import { Component } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { ActivationEnd, Router } from '@angular/router';
 import { CookieService } from 'ngx-cookie-service';
 
 @Component({
@@ -37,14 +37,20 @@ import { CookieService } from 'ngx-cookie-service';
 export class AppComponent {
   title = 'ApiDrim';
 
-  // boolean indicates if user is connected
-  connected = false;
-  // ins retrieved in url parameter
-  ins: string;
   // auth date of user
   dateAuth: string;
   // name + surname of user
   authenticator: string;
+  // UUID passed in url parameters 
+  uuid: string;
+
+  // displaying panel to chose activity struct
+  structurePanel = false;
+  // tab with all activity struct from the user connected
+  secteurActs: string[] = [];
+  // struct chosen by user
+  selectedStruct: string | undefined;
+
 
   /**
    * Constructor : manage local datas, session token and check if user connected
@@ -52,42 +58,84 @@ export class AppComponent {
    * @param cookieService to manage user cookies
    * @param route to manage angular routes
    */
-  constructor(private readonly http: HttpClient, private readonly cookieService: CookieService, private readonly route: ActivatedRoute) {
+  constructor(private router: Router, private readonly http: HttpClient, private readonly cookieService: CookieService) {
     this.authenticator = "DOCTEUR RADI";
     this.dateAuth = "04/10/2022 15:42";
 
-    this.route.queryParams.subscribe(params => {
-      // Retrieve url parameter (ins)
-      this.ins = params['ins'];
-      if (this.ins !== undefined) {
-        this.connected = true;
+    this.router.events.subscribe(event => {
+      // We retrieve the UUID value in url
+      if (event instanceof ActivationEnd) {
+        this.uuid = event.snapshot.queryParams['uuid'];
+
+
+        // Generate sessionToken
+        if (!this.cookieService.check("SessionToken")) {
+          const uuid = this.generateUUID();
+          this.cookieService.set("SessionToken", uuid);
+        }
+        this.verifyConnection();
       }
-      // Generate sessionToken
-      if (!cookieService.check("SessionToken")) {
-        const uuid = this.generateUUID();
-        this.cookieService.set("SessionToken", uuid);
-      }
-      this.verifyConnection();
     });
+
   }
+
 
   /**
    * Verify with backend if user connected
    * */
   verifyConnection() {
-    this.http.get('/api/auth', { responseType: 'text' }).subscribe(data => {
+    this.http.get('/api/auth?uuid=' + this.uuid, { responseType: 'text' }).subscribe(data => {
       // Back can answer : connected -- means user is already connected
       //                   connected but no structure : + list structs -- means user is already connected but activity struct no selected, gives list of user structs
       //                   no connected : + url -- means user is not connected, gives url to ProSanteConnect
+
+
       if (data.startsWith("no connected : ")) {
         // No connected, redirect to ProSanteconnect window
         const url = data.split(": ")[1];
         window.location.replace(url);
       }
-      else if (data.startsWith("connected but no structure : ")) {
-        window.location.replace("https://localhost/ris");
+      else {
+        this.http.get('/parameters/situation?uuid=' + this.uuid, { responseType: 'text' }).subscribe(data => {
+          if (data.startsWith("empty")) {
+            this.askStructure();
+          }
+          else {
+            this.structurePanel = false;
+          }
+        });
       }
     });
+  }
+
+  /**
+ * Get to back to retrieve list of user structures
+ * */
+  askStructure() {
+    // Display structure panel
+    this.structurePanel = true;
+
+    this.http.get('/api/locations', { responseType: 'text' }).subscribe(data => {
+      // Retrieve structure list
+      this.secteurActs = data.split("/");
+    });
+  }
+
+  /**
+   * Send to back structure chosen by user
+   * */
+  sendSect() {
+    // verify a structure is selected
+    if (this.selectedStruct !== undefined) {
+
+      this.http.get('/api/location?workLocation=' + this.selectedStruct, { responseType: 'text' }).subscribe(data => {
+        // If "Success" response, struct is uptated in back
+        if (data.startsWith("Success")) {
+          // Hide struct panel
+          this.structurePanel = false;
+        }
+      });
+    }
   }
 
   /**

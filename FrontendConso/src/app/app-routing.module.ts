@@ -32,10 +32,6 @@ const routes: Routes = [{
   path: '',
   component: AppComponent
 },
-{
-  path: 'dmp',
-  component: RequestComponent
-  },
 ];
 
 @NgModule({
