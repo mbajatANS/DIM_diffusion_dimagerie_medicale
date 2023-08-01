@@ -55,7 +55,7 @@ export class CheckAccessService {
       if (verify === "VALIDE") {
         return "ok";
       }
-      else if (consent === "yes") {
+      else if (consent === "yes" && verify !== "INTERDIT") {
         // If content : yes, we add right for the user to access patient dmp
         return this.td0_3(ins);
       }

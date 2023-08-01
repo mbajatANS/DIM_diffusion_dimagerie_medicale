@@ -52,7 +52,7 @@ import org.opensaml.xml.signature.SignatureException;
 import org.opensaml.xml.signature.impl.SignatureBuilder;
 import org.w3c.dom.Element;
 
-import javax.enterprise.inject.spi.CDI;
+import jakarta.enterprise.inject.spi.CDI;
 import javax.xml.XMLConstants;
 import javax.xml.namespace.QName;
 import java.security.*;

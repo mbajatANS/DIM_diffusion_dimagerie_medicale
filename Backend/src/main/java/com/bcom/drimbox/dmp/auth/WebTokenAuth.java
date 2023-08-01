@@ -35,8 +35,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-import javax.inject.Singleton;
-import javax.json.JsonObject;
+import jakarta.inject.Singleton;
+import jakarta.json.JsonObject;
 
 
 @Singleton

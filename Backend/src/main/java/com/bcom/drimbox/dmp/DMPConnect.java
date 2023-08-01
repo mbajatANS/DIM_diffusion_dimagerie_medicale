@@ -32,8 +32,8 @@ import com.bcom.drimbox.dmp.security.DMPKeyStore;
 import com.bcom.drimbox.dmp.xades.request.BaseXadesRequest;
 import io.quarkus.logging.Log;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;

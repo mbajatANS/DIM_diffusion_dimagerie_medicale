@@ -27,7 +27,7 @@
 
 package com.bcom.drimbox.psc.tokens;
 
-import javax.json.JsonObject;
+import jakarta.json.JsonObject;
 
 public class AccessToken extends PscToken{
 

@@ -34,9 +34,8 @@ import java.net.URLConnection;
 import java.util.HashMap;
 import java.util.Map;
 
-import javax.inject.Inject;
-import javax.ws.rs.Path;
-import javax.ws.rs.QueryParam;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.QueryParam;
 
 import org.dcm4che3.data.UID;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -75,16 +74,17 @@ public class StowRs {
 
 		try {
 			// Map of transfersStyntaxes and q paramaters associated
-			Map<String, String> transferSyntaxes = Map.of(UID.JPEGLosslessSV1, "0.9",
-					UID.JPEGLSLossless, "0.8",
-					UID.RLELossless, "0.6",
-					UID.JPEGBaseline8Bit, "0.5",
-					UID.JPEGExtended12Bit, "0.5",
-					UID.MPEG2MPML, "0.5",
-					UID.MPEG2MPHL, "0.5",
-					UID.MPEG4HP41, "0.5",
-					UID.MPEG4HP41BD, "0.5",
-					UID.ExplicitVRLittleEndian, "0.4");
+			Map<String, String> transferSyntaxes = Map.of(
+					UID.JPEGLSLossless, "0.9",
+					UID.JPEGLosslessSV1, "0.8",
+					UID.JPEGBaseline8Bit, "0.7",
+					UID.JPEGExtended12Bit, "0.6",
+					UID.JPEG2000, "0.6",
+					UID.ExplicitVRLittleEndian, "0.5",
+					UID.MPEG4HP41, "0.4",
+					UID.MPEG2MPML, "0.3",
+					UID.MPEG2MPHL, "0.3",
+					UID.MPEG4HP41BD, "0.3");
 			// Db source URL to ask study 
 			String serviceURL = DRIMboxConsoAPI.HTTP_PROTOCOL + drimboxSourceURL + "/" + PrefixConstants.DRIMBOX_PREFIX + "/" + PrefixConstants.STUDIES_PREFIX + "/" + studyUID + "/series/" + serieUID;
 			final URL url = new URL(serviceURL);

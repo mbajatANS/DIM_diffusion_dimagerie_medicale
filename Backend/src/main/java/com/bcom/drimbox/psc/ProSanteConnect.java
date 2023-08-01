@@ -32,11 +32,11 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-import javax.json.Json;
-import javax.json.JsonObject;
-import javax.json.JsonReader;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
+import jakarta.json.Json;
+import jakarta.json.JsonObject;
+import jakarta.json.JsonReader;
 
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpHeaders;

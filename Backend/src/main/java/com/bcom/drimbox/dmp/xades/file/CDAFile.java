@@ -48,14 +48,18 @@ public class CDAFile {
 	private XadesType.ClassificationCode eventCode;
 	private String sourcePatientID;
 	private String patientID;
+	private String patientBirthDate;
+	private String patientSex;
 	private XadesType.SourcePatientInfo sourcePatientInfo;
 	private String serviceStartTime;
 	private String serviceStopTime;
 	private XadesType.ClassificationCode practiceSetting;
 	private XadesType.ClassificationCode healthcareFacilityType;
 	private String studyID;
-	private String order;
-	private String accessionNumber;
+	private String orderRoot;
+	private String orderExtension;
+	private String accessionNumberRoot;
+	private String accessionNumberExtension;
 	private XadesType.ClassificationCode confidentiality; 
 
 	public String getAuthorID() {
@@ -81,19 +85,37 @@ public class CDAFile {
 	private String patientName;
 	private String structureID;
 
-	private File file;
+	private String cdaContents;
+
+	/**
+	 * New CDA based on a file
+	 *
+	 * @param file CDA file
+	 */
 	public CDAFile(File file) {
-		this.file = file;
-		parseCDA(file);
+		try {
+			cdaContents = Files.readString(file.toPath());
+			parseCDA();
+		} catch (IOException e) {
+			Log.error("Can't parse CDA from file : " + file);
+			e.printStackTrace();
+		}
+	}
+
+	/**
+	 * New CDA with the raw contents
+	 * @param cdaContents CDA XML contents
+	 */
+	public CDAFile(String cdaContents) {
+		this.cdaContents = cdaContents;
+		parseCDA();
 	}
 
 	public byte[] getRawData() {
 		try {
-			String content = Files.readString(file.toPath());
-
 			// Canonicalization of the CDA before sending
 			Builder builder = new Builder();
-			nu.xom.Document cda = builder.build(content, null);
+			nu.xom.Document cda = builder.build(cdaContents, null);
 
 			ByteArrayOutputStream os = new ByteArrayOutputStream();
 			nu.xom.canonical.Canonicalizer c = new nu.xom.canonical.Canonicalizer(os, Canonicalizer.CANONICAL_XML_WITH_COMMENTS);
@@ -102,8 +124,6 @@ public class CDAFile {
 			//String contentWithoutLineBreaks = os.toString().replaceAll("\\s+","");
 
 			return os.toByteArray();
-		} catch (IOException e) {
-			throw new IllegalStateException("could not read file " + file, e);
 		} catch (Exception e) {
 			e.printStackTrace();
 			throw new RuntimeException();
@@ -143,16 +163,16 @@ public class CDAFile {
 	XPathContext xpathContext;
 	// This is needed to search in the XML document. This is bc XOM enforce namespace resolution, and we need to tell him the current namespace. For now it doesn't support the *: syntax so we need to do this.
 	final static String xpathNamespacePrefix = "ns";
-	private void parseCDA(File file) {
+	private void parseCDA() {
 		try {
 			Builder parser = new Builder();
-			cda = parser.build(file);
+			cda = parser.build(cdaContents, null);
 			// We need to create a context with the right namespace
 			xpathContext = XPathContext.makeNamespaceContext(cda.getRootElement());
 			xpathContext.addNamespace(xpathNamespacePrefix, cda.getRootElement().getNamespaceURI());
 
-			patientName = stringValueOfPath("//legalAuthenticator/assignedEntity/assignedPerson/name/family");
-			patientGiven = stringValueOfPath("//legalAuthenticator/assignedEntity/assignedPerson/name/given");
+			patientName = stringValueOfPath("//recordTarget/patientRole/patient/name/family");
+			patientGiven = stringValueOfPath("//recordTarget/patientRole/patient/name/given");
 
 
 			confidentiality = getClassificationCode("//confidentialityCode");
@@ -173,12 +193,14 @@ public class CDAFile {
 			var patientIDAttr = getElement("//recordTarget/patientRole/id");
 			sourcePatientID = patientIDAttr.getAttributeValue("extension") + "^^^&" + patientIDAttr.getAttributeValue("root") + "&ISO^PI";
 			patientID = patientIDAttr.getAttributeValue("extension") + "^^^&" + patientIDAttr.getAttributeValue("root") + "&ISO^NH";
-
-
+			
 			var patientAgeAttr = getElement("//recordTarget/patientRole/patient/birthTime");
 			var patientSexAttr = getElement("//recordTarget/patientRole/patient/administrativeGenderCode");
 			sourcePatientInfo = new XadesType.SourcePatientInfo(patientName + "^" + patientGiven + "^^^^^L", patientAgeAttr.getAttributeValue("value"), patientSexAttr.getAttributeValue("code"));
+			patientBirthDate = patientAgeAttr.getAttributeValue("value");
+			patientSex = patientSexAttr.getAttributeValue("code");
 
+			
 			serviceStartTime = getElement("//documentationOf/serviceEvent/effectiveTime/low").getAttributeValue("value");
 			serviceStopTime = getElement("//documentationOf/serviceEvent/effectiveTime/high").getAttributeValue("value");
 
@@ -187,8 +209,10 @@ public class CDAFile {
 
 
 			studyID = getElement("//documentationOf/serviceEvent/id").getAttributeValue("root");
-			accessionNumber = getElement("//inFulfillmentOf/order/*[local-name()='accessionNumber']").getAttributeValue("extension");
-			order = getElement("//inFulfillmentOf/order/id").getAttributeValue("root");
+			accessionNumberExtension = getElement("//inFulfillmentOf/order/*[local-name()='accessionNumber']").getAttributeValue("extension");
+			accessionNumberRoot = getElement("//inFulfillmentOf/order/*[local-name()='accessionNumber']").getAttributeValue("root");
+			orderExtension = getElement("//inFulfillmentOf/order/id").getAttributeValue("extension");
+			orderRoot = getElement("//inFulfillmentOf/order/id").getAttributeValue("root");
 
 			eventCode = getClassificationCode("//documentationOf/serviceEvent/code");
 
@@ -253,19 +277,59 @@ public class CDAFile {
 		return studyID;
 	}
 
-	public String getOrder() {
-		return order;
-	}
-
-	public String getAccessionNumber() {
-		return accessionNumber;
-	}
-
 	public String getCdaID() {
 		return cdaID;
 	}
 
 	public void setCdaID(String cdaID) {
 		this.cdaID = cdaID;
+	}
+
+	public String getPatientBirthDate() {
+		return patientBirthDate;
+	}
+
+	public void setPatientBirthDate(String patientBirthDate) {
+		this.patientBirthDate = patientBirthDate;
+	}
+
+	public String getPatientSex() {
+		return patientSex;
+	}
+
+	public void setPatientSex(String patientSex) {
+		this.patientSex = patientSex;
+	}
+
+	public String getOrderRoot() {
+		return orderRoot;
+	}
+
+	public void setOrderRoot(String orderRoot) {
+		this.orderRoot = orderRoot;
+	}
+
+	public String getOrderExtension() {
+		return orderExtension;
+	}
+
+	public void setOrderExtension(String orderExtension) {
+		this.orderExtension = orderExtension;
+	}
+
+	public String getAccessionNumberRoot() {
+		return accessionNumberRoot;
+	}
+
+	public void setAccessionNumberRoot(String accessionNumberRoot) {
+		this.accessionNumberRoot = accessionNumberRoot;
+	}
+
+	public String getAccessionNumberExtension() {
+		return accessionNumberExtension;
+	}
+
+	public void setAccessionNumberExtension(String accessionNumberExtension) {
+		this.accessionNumberExtension = accessionNumberExtension;
 	}
 }

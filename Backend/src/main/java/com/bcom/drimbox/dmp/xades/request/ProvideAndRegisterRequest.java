@@ -39,7 +39,7 @@ import com.bcom.drimbox.utils.XMLUtils;
 
 import org.w3c.dom.Element;
 
-import javax.enterprise.inject.spi.CDI;
+import jakarta.enterprise.inject.spi.CDI;
 
 import java.io.IOException;
 import java.io.StringWriter;
@@ -80,7 +80,7 @@ public class ProvideAndRegisterRequest extends BaseXadesRequest {
 
 
     // TODO: generic way to put file
-    public ProvideAndRegisterRequest(CDAFile referenceCDA, KOSFile kos) {
+    public ProvideAndRegisterRequest(CDAFile referenceCDA, KOSFile kos) throws Exception {
         super();
 
         // Create first ID (0.1) for this document
@@ -108,8 +108,8 @@ public class ProvideAndRegisterRequest extends BaseXadesRequest {
         addBaseElementToNode(registryObjectList, submissionSet);
 
         // DocumentEntry fields
-        DocumentEntry cdaEntry = new DocumentEntry(referenceCDA, DocumentEntry.FileType.CDA);
-        DocumentEntry kosEntry = new DocumentEntry(referenceCDA, DocumentEntry.FileType.KOS);
+        DocumentEntry cdaEntry = new DocumentEntry(referenceCDA, DocumentEntry.FileType.CDA, kos);
+        DocumentEntry kosEntry = new DocumentEntry(referenceCDA, DocumentEntry.FileType.KOS, kos);
         DocumentEntry signatureEntry = new DocumentEntry(submissionSet, referenceCDA);
 
         // Add document entry to the request

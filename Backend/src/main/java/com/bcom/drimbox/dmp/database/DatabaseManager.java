@@ -30,7 +30,8 @@ package com.bcom.drimbox.dmp.database;
 import com.bcom.drimbox.dmp.xades.file.CDAFile;
 import com.bcom.drimbox.dmp.xades.file.KOSFile;
 
-import javax.inject.Singleton;
+import jakarta.inject.Singleton;
+import jakarta.transaction.Transactional;
 
 @Singleton
 public class DatabaseManager {
@@ -41,6 +42,7 @@ public class DatabaseManager {
      * @param kosFile KOS file to store
      * @return true if success, false otherwise (e.g. studyUID already exists)
      */
+    @Transactional
     public Boolean addEntity(CDAFile cdaFile, KOSFile kosFile,  byte[] rawMetadata) {
         try {
             SourceEntity s = new SourceEntity();

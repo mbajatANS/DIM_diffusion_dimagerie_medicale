@@ -43,11 +43,11 @@ public class CDAParsing {
         // Todo : check with actual values
         assertFalse(f.getConfidentiality().isEmpty());
         assertFalse(f.getPatientID().isEmpty());
-        assertFalse(f.getAccessionNumber().isEmpty());
+        assertFalse(f.getAccessionNumberRoot().isEmpty());
         assertFalse(f.getAuthorInstitution().isEmpty());
         assertFalse(f.getAuthorPerson().isEmpty());
         assertFalse(f.getLegalAuthenticator().isEmpty());
-        assertFalse(f.getOrder().isEmpty());
+        assertFalse(f.getOrderRoot().isEmpty());
         assertFalse(f.getServiceStartTime().isEmpty());
         assertFalse(f.getServiceStopTime().isEmpty());
         assertFalse(f.getSourcePatientID().isEmpty());

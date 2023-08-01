@@ -29,23 +29,12 @@
 package com.bcom.drimbox.api;
 
 import java.io.ByteArrayInputStream;
-import java.io.File;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import javax.inject.Inject;
-import javax.json.JsonObject;
-import javax.transaction.Transactional;
-import javax.ws.rs.CookieParam;
-import javax.ws.rs.GET;
-import javax.ws.rs.Path;
-import javax.ws.rs.Produces;
-import javax.ws.rs.QueryParam;
-import javax.ws.rs.core.Cookie;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
+import org.dcm4che3.mime.MultipartParser;
 
 import com.bcom.drimbox.dmp.DMPConnect;
 import com.bcom.drimbox.dmp.DMPConnect.DMPResponseBytes;
@@ -64,7 +53,16 @@ import com.bcom.drimbox.dmp.xades.request.BaseXadesRequest;
 import com.bcom.drimbox.dmp.xades.request.ProvideAndRegisterRequest;
 
 import io.quarkus.logging.Log;
-import org.dcm4che3.mime.MultipartParser;
+import jakarta.inject.Inject;
+import jakarta.json.JsonObject;
+import jakarta.ws.rs.CookieParam;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.core.Cookie;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 
 // Todo : find a prefix for those request, /dmp maybe ?
 @Path("/api")
@@ -188,21 +186,27 @@ public class DmpAPI {
 	}
 
 
+	public boolean storeCDA(CDAFile c) {
+		//KOSFile k = new KOSFile(new File(getClass().getClassLoader().getResource("kos.dcm").getPath()));
+		try {
+			KOSFile k = new KOSFile(c);
+			ProvideAndRegisterRequest request = new ProvideAndRegisterRequest(c, k);
 
+			if ( ! databaseManager.addEntity(c, k, request.getRequest().getBytes())) {
+				Log.error("Can't add KOS to BDD. Study UID : " + c.getStudyID());
+			}
 
-	@Transactional
-	@GET
-	@Path("/provide")
-	public Response xadesReq(String ins, @CookieParam("SessionToken") Cookie cookieSession)  {
-		CDAFile c = new CDAFile(new File(getClass().getClassLoader().getResource("cda.xml").getPath()));
-		KOSFile k = new KOSFile(new File(getClass().getClassLoader().getResource("kos.dcm").getPath()));
-		ProvideAndRegisterRequest request = new ProvideAndRegisterRequest(c, k);
+			Response response = dmpRequest(request);
+			if(response.getStatus() == 200) {
+				return true;
+			}
+			else return false;
 
-		if ( ! databaseManager.addEntity(c, k, request.getRequest().getBytes())) {
-			Log.warn("Can't add KOS to BDD. Study UID : " + c.getStudyID());
+		} catch (Exception e) {
+			Log.error("Error while storing CDA : " + e);
+			e.printStackTrace();
 		}
-
-		return dmpRequest(request, cookieSession);
+		return false;
 	}
 
 	/**
@@ -242,16 +246,8 @@ public class DmpAPI {
 		return Response.status(401).build();
 	}
 
-	private Response dmpRequest(BaseXadesRequest request, Cookie cookieSession) {
-		if(cookieSession != null) {
-			String cookieID = cookieSession.getValue();
-
-			if (webTokenAuth.clientRegistered(cookieID)) {
-				DMPConnect.DMPResponse response = dmpConnect.sendPostRequest(request);
-				return Response.ok(response.message).build();
-			}
-		}
-
-		return Response.status(401).build();
+	private Response dmpRequest(BaseXadesRequest request) {
+		DMPConnect.DMPResponse response = dmpConnect.sendPostRequest(request);
+		return Response.ok(response.message).build();
 	}
 }

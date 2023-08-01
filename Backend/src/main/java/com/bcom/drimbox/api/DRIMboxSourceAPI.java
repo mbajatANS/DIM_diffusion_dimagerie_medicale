@@ -32,33 +32,47 @@ import static com.bcom.drimbox.utils.PrefixConstants.METADATA_PREFIX;
 import static com.bcom.drimbox.utils.PrefixConstants.SERIES_PREFIX;
 import static com.bcom.drimbox.utils.PrefixConstants.STUDIES_PREFIX;
 
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.StringReader;
+import java.net.*;
+import java.util.*;
+import java.util.concurrent.Future;
+import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import javax.inject.Inject;
-import javax.ws.rs.GET;
-import javax.ws.rs.HeaderParam;
-import javax.ws.rs.Path;
-import javax.ws.rs.Produces;
-import javax.ws.rs.core.Context;
-import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.UriInfo;
+import io.smallrye.mutiny.Uni;
+import jakarta.enterprise.inject.spi.CDI;
+import jakarta.inject.Inject;
+import jakarta.json.*;
+import jakarta.ws.rs.*;
+import jakarta.ws.rs.container.ContainerRequestContext;
+import jakarta.ws.rs.core.*;
 
+import com.bcom.drimbox.utils.exceptions.RequestErrorException;
+import com.bcom.drimbox.utils.exceptions.WadoErrorException;
+import org.dcm4che3.data.Attributes;
+import org.dcm4che3.data.Tag;
+import org.dcm4che3.io.DicomInputStream;
+import org.dcm4che3.io.DicomInputStream.IncludeBulkData;
+import org.dcm4che3.util.TagUtils;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.jboss.resteasy.reactive.RestMulti;
 import org.jboss.resteasy.reactive.RestResponse;
 
+import com.bcom.drimbox.dmp.database.DatabaseManager;
+import com.bcom.drimbox.dmp.database.SourceEntity;
 import com.bcom.drimbox.pacs.CStoreSCP;
 import com.bcom.drimbox.psc.ProSanteConnect;
 import com.bcom.drimbox.utils.RequestHelper;
 
 import io.quarkus.logging.Log;
+import io.smallrye.common.annotation.Blocking;
 import io.smallrye.mutiny.Multi;
+import org.jboss.resteasy.reactive.server.ServerExceptionMapper;
 
 
 @Path("/" + DRIMBOX_PREFIX)
@@ -78,8 +92,9 @@ public class DRIMboxSourceAPI {
 	@Inject
 	RequestHelper requestHelper;
 
+
 	@Inject
-	CStoreSCP cstoreSCP;
+	DatabaseManager databaseManager;
 
 	/**
 	 * Bearer token that is in the request. It will be verified with the introspection mechanism of prosanteconnect
@@ -92,32 +107,267 @@ public class DRIMboxSourceAPI {
 	@Inject
 	ProSanteConnect proSanteConnect;
 
+	public static final String DICOM_FILE_PREFIX = "dicomfile";
 
 	@GET
+	@Produces("multipart/related")
+	@Blocking
 	@Path("/studies/{studyUID}/series/{seriesUID}")
-	@Produces("multipart/related;start=\\\"<1@resteasy-multipart>\\\";transfer-syntax=1.2.840.10008.1.2.1;type=\\\"application/dicom\\\"; boundary=myBoundary")
 	public Multi<byte[]> drimboxMultipartWado(String studyUID, String seriesUID, @Context HttpHeaders headers) {
+
+		final String ACCEPTED_FORMAT_SAMPLE = "Accepted format : transfer-syntax=1.2.840.10008.1.2.4.50;q=0.9;boundary=myBoundary, transfer-syntax=1.2.840.10008.1.2.4.50;q=0.5;boundary=myBoundary";
+
 		if (!checkAuthorisation()) {
-			Log.fatal("Authentication failure");
-			return Multi.createFrom().empty();
+			return createError("Authentication failure", 401);
 		}
 
 		String url = getWadoUrl() + "/" + STUDIES_PREFIX + "/" + studyUID + "/" + SERIES_PREFIX + "/" + seriesUID;
-		Map<String, String> tsMap = new HashMap<>();
-		for (String header : headers.getRequestHeaders().get("Accept")) {
 
-			tsMap.put(header.split("transfer-syntax=")[1].split(";")[0], header.split("q=")[1].split(";")[0]);
+		List<String> acceptHeaderList = headers.getRequestHeaders().get("Accept");
+		if(acceptHeaderList == null || acceptHeaderList.isEmpty())  {
+			return createError("Missing Accept header. " + ACCEPTED_FORMAT_SAMPLE, 400);
 		}
-		tsMap = tsMap.entrySet().stream().sorted(Map.Entry.<String, String>comparingByValue().reversed()).collect(Collectors.toMap(
-				Map.Entry::getKey, 
-				Map.Entry::getValue, 
-				(oldValue, newValue) -> oldValue, LinkedHashMap::new));
-		List<String> transferSyntaxes = new ArrayList<>(tsMap.keySet());
-		
-		String boundary = headers.getRequestHeaders().get("Accept").get(0).split("boundary=")[1];
-		cstoreSCP.setBoundary(boundary);
 
-		return requestHelper.fileRequestCMove(url, transferSyntaxes);
+
+		if(acceptHeaderList.size() == 1)  {
+			acceptHeaderList =  Arrays.asList(acceptHeaderList.get(0).split(","));
+
+			Log.info("Found " + acceptHeaderList.size() + " transfer syntax");
+		}
+
+
+		String boundary = "";
+		Map<String, String> tsMap = new HashMap<>();
+		for (String header : acceptHeaderList) {
+
+			String transfer_syntax = regexExtractor("transfer-syntax=([\\d+\\.?]+)", header);
+			if (transfer_syntax == null) {
+				return createError("Can't find transfer-syntax field for : " + header, 400);
+			}
+
+			String q = regexExtractor("q=(\\d\\.\\d)", header);
+			if (q == null) {
+				return createError("Can't find q field for : " + header , 400);
+			}
+
+			if (boundary.isEmpty()) {
+				boundary = regexExtractor("boundary=([^,;.]+)", header);
+				if (boundary == null) {
+					return createError("Can't find boundary field for : " + header, 400);
+				}
+			}
+
+			tsMap.put(transfer_syntax, q);
+		}
+
+		if (tsMap.isEmpty()) {
+			Log.error(acceptHeaderList);
+			return createError("Invalid Accept header. Could not find transfer-syntax,q parameter or boundary. " + ACCEPTED_FORMAT_SAMPLE,
+					400);
+		}
+
+		// Sort by q value
+		tsMap = tsMap.entrySet().stream().sorted(Map.Entry.<String, String>comparingByValue().reversed()).collect(Collectors.toMap(
+				Map.Entry::getKey,
+				Map.Entry::getValue,
+				(oldValue, newValue) -> oldValue, LinkedHashMap::new));
+		List<String> acceptedTransferSyntax = new ArrayList<>(tsMap.keySet());
+		if(acceptedTransferSyntax.isEmpty()) {
+			return createError("Transfer syntax list is empty", 500);
+		}
+		List<String> preferredTransferSyntax = new ArrayList<String>();
+		for (var entry : tsMap.entrySet()) {
+		    if(Float.parseFloat(entry.getValue()) > 0.7) {
+		    	preferredTransferSyntax.add(entry.getKey());
+		    }
+		    	
+		}
+
+		List<String> sopInstanceUIDHeader = headers.getRequestHeader("KOS-SOPInstanceUID");
+
+		if(sopInstanceUIDHeader.isEmpty())  {
+			return createError("Missing KOS-SOPInstanceUID", 400);
+		}
+
+		String sopInstanceUID = sopInstanceUIDHeader.get(0);
+		if(!verifySop(sopInstanceUID, studyUID))  {
+			return createError(String.format("Can't find KOS in database. SopInstance : %s / Study : %s ", sopInstanceUID, studyUID), 404);
+		}
+
+		String contentType = String.format("multipart/related;start=\"<1@resteasy-multipart>\";type=\"application/dicom\"; boundary=%s", boundary);
+
+		return RestMulti.fromMultiData(requestHelper.fileRequestCMove(url, acceptedTransferSyntax, preferredTransferSyntax, boundary))
+				.header("Content-Type", contentType)
+				.build();
+	}
+
+
+	private String regexExtractor(String regex, String baseString) {
+		final Pattern pattern = Pattern.compile(regex, Pattern.MULTILINE);
+		final Matcher matcher = pattern.matcher(baseString);
+		if (!matcher.find())
+			return null;
+
+		return matcher.group(1);
+	}
+
+
+	@ServerExceptionMapper
+	public RestResponse<String> mapException(WadoErrorException x) {
+		return RestResponse.ResponseBuilder.ok(x.getMessage()).status(x.getErrorCode()).build();
+	}
+
+
+	private Multi<byte[]> createError(String error, int code) {
+		Log.error(error);
+		return Multi.createFrom().failure(new WadoErrorException(error, code));
+	}
+
+	private boolean verifySop(String sopInstanceUID, String studyUID) {
+		SourceEntity entity = this.databaseManager.getEntity(studyUID);
+		if(entity == null) {
+			Log.info("No data found in database");
+			return false;
+		}
+
+		InputStream targetStream = new ByteArrayInputStream(entity.rawKOS);
+		try (DicomInputStream dis = new DicomInputStream(targetStream)) {
+			dis.setIncludeBulkData(IncludeBulkData.URI);
+			Attributes dataset = dis.readDataset();
+			String sopInstanceUIDLocal = dataset.getString(Tag.SOPInstanceUID);
+
+			return sopInstanceUIDLocal.equals(sopInstanceUID);
+		} catch (Exception e) {
+			Log.error("Error in verifySop");
+			Log.error(e.getMessage());
+		}
+
+		return false;
+	}
+
+	@Produces(MediaType.APPLICATION_JSON)
+	@GET
+	@Path("ohifv3metadata/{studyUID}")
+	public Response getOHIFv3Metadata(String studyUID, @Context UriInfo uriInfo) {
+
+		final String pacsUrl = getWadoUrl();
+
+		String url = pacsUrl + "/" + STUDIES_PREFIX +"/" + studyUID + "/" + METADATA_PREFIX;
+		var response = requestHelper.stringRequest(url, this::getPacsConnection);
+
+		int responseCode = response.getStatus();
+		String responseMessage = response.getEntity();
+		switch(responseCode) {
+			case 502:
+			case 504:
+				return Response.ok(responseMessage).status(responseCode).build();
+			case 404:
+				return Response.ok(String.format("Study : %s not found at %s", studyUID, pacsUrl)).status(responseCode).build();
+			case 200:
+				break;
+			default:
+				return Response.ok(String.format("Error when retrieving metadata at %s for study %s. Reason : %s", pacsUrl, studyUID, responseMessage)).status(responseCode).build();
+		}
+
+		// Read metadata from server
+		var jsonReader = Json.createReader(new StringReader(responseMessage));
+		JsonArray dicomMetadata = jsonReader.readArray();
+
+
+		JsonObjectBuilder root = Json.createObjectBuilder();
+		JsonArrayBuilder studiesArray = Json.createArrayBuilder();
+		JsonArrayBuilder seriesArray = Json.createArrayBuilder();
+
+
+
+		Map<String, JsonObjectBuilder> seriesMap = new HashMap<>();
+		Map<String, JsonArrayBuilder> instanceMap = new HashMap<>();
+
+		for(Object dicomInstanceMetadata : dicomMetadata) {
+
+			JsonObject currentInstanceJson = (JsonObject) dicomInstanceMetadata;
+			Function<Integer, String> getStringField = (var tag) ->  currentInstanceJson.getJsonObject(TagUtils.toHexString(tag)).getJsonArray("Value").getString(0);
+
+			final String currentSeriesUID = getStringField.apply(Tag.SeriesInstanceUID);
+
+			// If our series is not already in the map we add it
+			if (!seriesMap.containsKey(currentSeriesUID)) {
+				JsonObjectBuilder seriesObject = Json.createObjectBuilder();
+				seriesObject.add("SeriesInstanceUID", currentSeriesUID);
+
+				seriesMap.put(currentSeriesUID, seriesObject);
+			}
+
+			JsonObjectBuilder currentSeriesJsonObject = seriesMap.get(currentSeriesUID);
+
+			JsonObjectBuilder metadata = Json.createObjectBuilder();
+			String instanceUID = getStringField.apply(Tag.SOPInstanceUID);
+			metadata.add("SOPInstanceUID", instanceUID);
+			metadata.add("SeriesInstanceUID", currentSeriesUID);
+			metadata.add("StudyInstanceUID", getStringField.apply(Tag.StudyInstanceUID));
+			metadata.add("SOPClassUID", getStringField.apply(Tag.SOPClassUID));
+			metadata.add("InstanceNumber", getStringField.apply(Tag.InstanceNumber));
+
+
+			if (!instanceMap.containsKey(currentSeriesUID)) {
+				JsonArrayBuilder instancesArray = Json.createArrayBuilder();
+				instanceMap.put(currentSeriesUID, instancesArray);
+			}
+
+			JsonArrayBuilder currentInstancesArray = instanceMap.get(currentSeriesUID);
+
+			// Add to the instance list
+			currentInstancesArray.add(Json.createObjectBuilder()
+					.add("metadata", metadata)
+					.add("url", "wadouri:" + uriInfo.getBaseUri() + DRIMBOX_PREFIX + "/" + DICOM_FILE_PREFIX + "/" + studyUID + "/" + currentSeriesUID + "/" + instanceUID )
+			);
+
+		}
+
+		for (Map.Entry<String, JsonObjectBuilder> entry : seriesMap.entrySet()) {
+			String seriesUID = entry.getKey();
+			JsonObjectBuilder currentSeriesJsonObject = entry.getValue();
+
+			currentSeriesJsonObject.add("instances", instanceMap.get(seriesUID));
+			seriesArray.add(currentSeriesJsonObject);
+		}
+
+
+		JsonObjectBuilder study = Json.createObjectBuilder();
+		study.add("StudyInstanceUID", studyUID);
+		study.add("series", seriesArray);
+		study.add("NumInstances", dicomMetadata.size());
+
+		study.add("StudyDate", "20000101");
+		study.add("StudyTime", "");
+		study.add("PatientName", "");
+		study.add("PatientID", "LOL");
+		study.add("AccessionNumber", "");
+		study.add("PatientAge", "");
+		study.add("PatientSex", "");
+		study.add("StudyDescription", "");
+
+		studiesArray.add(study);
+
+		root.add("studies", studiesArray);
+
+		return Response.ok(root.build().toString()).build();
+	}
+
+	// TODO : add authentification
+	@GET
+	@Path(DICOM_FILE_PREFIX + "/{studyUID}/{seriesUID}/{instanceUID}")
+	public RestResponse<byte[]> getDicomFile(String studyUID, String seriesUID, String instanceUID) {
+		String url = getWadoUrl() + "/" + STUDIES_PREFIX +"/" + studyUID + "/" + SERIES_PREFIX + "/" + seriesUID + "/instances/" +  instanceUID;
+
+		var dicomFiles = requestHelper.multipartFileRequest(url, this::getPacsConnection);
+
+		if (dicomFiles.size() != 1) {
+			Log.error("Should have retrieve only one dicom file");
+			return RestResponse.noContent();
+		}
+
+		return RestResponse.ok(dicomFiles.get(0));
 	}
 
 	@GET
@@ -148,23 +398,46 @@ public class DRIMboxSourceAPI {
 	}
 
 
+	private HttpURLConnection getPacsConnection(String pacsUrl) throws RequestErrorException  {
+		try {
+			final URL url = new URL(pacsUrl);
 
-	private HttpURLConnection getPacsConnection(String pacsUrl) throws Exception {
-		final URL url = new URL(pacsUrl);
+			if (!checkAuthorisation()) {
+				throw new RequestErrorException("Authentication failure", 401);
+			}
 
-		if (!checkAuthorisation()) {
-			throw new Exception("Authentication failure");
+			final int timeoutValueMS = 60000;
+			final HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+			connection.setConnectTimeout(timeoutValueMS);
+			connection.setReadTimeout(timeoutValueMS);
+			connection.setRequestMethod("GET");
+			int responseCode = connection.getResponseCode();
+
+			switch(responseCode) {
+				case 404:
+					throw new RequestErrorException("Cannot find resource", responseCode);
+				case 504:
+					throw new RequestErrorException("Pacs didn't respond in time.", responseCode);
+				case 200:
+				case 206:
+					break;
+				default:
+					throw new RequestErrorException("Pacs request failed.", responseCode);
+			}
+
+			return connection;
+		} catch (ProtocolException e) {
+			throw new RequestErrorException("ProtocolException : " + e.getMessage(), 500);
+		} catch (MalformedURLException e) {
+			throw new RequestErrorException("MalformedURLException : " + e.getMessage(), 500);
+		} catch (SocketTimeoutException e) {
+			throw new RequestErrorException("Pacs didn't respond in time. " + e.getMessage(), 504);
+		} catch (ConnectException e) {
+			Log.error(String.format("Pacs at %s is not responding.", pacsUrl));
+			throw new RequestErrorException("Pacs is not responding. " + e.getMessage(), 502);
+		} catch (IOException e) {
+			throw new RequestErrorException("IOException : " + e.getMessage(), 500);
 		}
-
-		final HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-		connection.setRequestMethod("GET");
-		int responseCode = connection.getResponseCode();
-
-		if (responseCode != 200 && responseCode != 206)
-			throw new Exception("Pacs request failed with error code " + responseCode);
-
-
-		return connection;
 	}
 
 	private boolean checkAuthorisation()  {

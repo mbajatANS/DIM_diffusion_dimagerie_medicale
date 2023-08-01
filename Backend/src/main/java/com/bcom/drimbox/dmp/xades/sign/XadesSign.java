@@ -31,7 +31,7 @@ import nu.xom.canonical.Canonicalizer;
 import org.joda.time.format.ISODateTimeFormat;
 import nu.xom.*;
 
-import javax.enterprise.inject.spi.CDI;
+import jakarta.enterprise.inject.spi.CDI;
 import java.io.*;
 import java.security.*;
 import java.security.cert.CertificateEncodingException;

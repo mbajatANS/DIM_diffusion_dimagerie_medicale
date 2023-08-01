@@ -41,8 +41,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 
 import org.dcm4che3.data.Attributes;
 import org.dcm4che3.data.Tag;
@@ -89,7 +89,7 @@ public class CStoreSCP {
 
 	private ApplicationEntity ae;
 
-	private String ts;
+	private List<String> ts;
 
 	@Inject
 	EventBus eventBus;
@@ -177,19 +177,17 @@ public class CStoreSCP {
 		this.boundary = boundary;
 	}
 
-	public void resetTransferSyntaxes(List<String> transferSyntaxs) {
+	/**
+	 * Set transfer syntax
+	 */
+	public void setPreferredTransferSyntax(List<String> transferSyntax) {
+		ts = transferSyntax;
+	}
 
-		String[] str = new String[transferSyntaxs.size()];
-
-		for (int i = 0; i < transferSyntaxs.size(); i++) {
-			str[i] = transferSyntaxs.get(i);
-		}
-
-
-		this.ae.removeTransferCapabilityFor("*", TransferCapability.Role.SCP);		
-		this.ae.addTransferCapability(new TransferCapability(null,
-				"*", TransferCapability.Role.SCP, str));
-		this.ts = str[0];
+	public void setSupportedTransferSyntax(List<String> transferSyntax) {
+		ae.removeTransferCapabilityFor("*", TransferCapability.Role.SCP);
+		ae.addTransferCapability(new TransferCapability(null,
+				"*", TransferCapability.Role.SCP, transferSyntax.toArray(String[]::new)));
 	}
 
 	private void store(Association as, PresentationContext pc, Attributes rq, PDVInputStream data)
@@ -210,10 +208,10 @@ public class CStoreSCP {
 
 		InputStream input = new ByteArrayInputStream(output2.toByteArray()); 
 
-		if (!Objects.equals(this.ts, tsuid)) {
+		if (!this.checkTransferSyntax(tsuid)) {
 			DCMTranscoder dcm2Dcm = new DCMTranscoder();
 			try {
-				dcm2Dcm.setTransferSyntax(ts);
+				dcm2Dcm.setTransferSyntax(ts.get(0));
 				output.write(dcm2Dcm.transcode(input).toByteArray());
 			} catch (InterruptedException e) {
 				Log.error("Can't transcode current input stream");
@@ -253,5 +251,16 @@ public class CStoreSCP {
 
 	public String getAET() {
 		return aet;
+	}
+
+	private boolean checkTransferSyntax(String transferSyntax) {
+		boolean found = false;
+		for (String tsAvailable : this.ts) {
+			if(Objects.equals(tsAvailable, transferSyntax)) {
+				found = true;
+			}
+		}
+		Log.info(found);
+		return found;
 	}
 }

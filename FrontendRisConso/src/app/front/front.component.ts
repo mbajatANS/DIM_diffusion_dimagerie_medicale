@@ -45,11 +45,11 @@ export class FrontComponent implements OnChanges {
     let body = '';
     // Check if a structure is selected
     if (this.selectedStruct != "") {
-      body = 'ins=248039263001064&insAuthority=1.2.250.1.213.1.4.8&consent=yes&patientID=123&patientIDIssuer=1470003641&modality=CT&situation=' + this.selectedStruct;
+      body = 'ins=248039263001064&insAuthority=1.2.250.1.213.1.4.8&consent=yes&patientID=123&patientIDIssuer=1470003641&modality=CT&lastName=aa&firstName=aaa&birthDate=aaa&birthPlace=aaa&sex=aaa&situation=' + this.selectedStruct;
     }
 
     else
-      body = 'ins=248039263001064&insAuthority=1.2.250.1.213.1.4.8&consent=yes&patientID=123&patientIDIssuer=1470003641&modality=CT';
+      body = 'ins=248039263001064&insAuthority=1.2.250.1.213.1.4.8&consent=yes&patientID=123&patientIDIssuer=1470003641&modality=CT&lastName=aa&firstName=aaa&birthDate=aaa&birthPlace=aaa&sex=aaa&toto=az';
 
     this.http.post('http://localhost:4200/parameters', body, {
       responseType: 'text',

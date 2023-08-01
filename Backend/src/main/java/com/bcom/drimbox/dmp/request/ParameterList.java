@@ -31,18 +31,18 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-import javax.ws.rs.CookieParam;
-import javax.ws.rs.GET;
-import javax.ws.rs.POST;
-import javax.ws.rs.Path;
-import javax.ws.rs.Produces;
-import javax.ws.rs.QueryParam;
-import javax.ws.rs.core.Cookie;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriBuilder;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
+import jakarta.ws.rs.CookieParam;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.core.Cookie;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriBuilder;
 
 import com.bcom.drimbox.dmp.auth.WebTokenAuth;
 
@@ -56,7 +56,12 @@ public class ParameterList {
 
 	// Map of query parameters
 	private final Map<String, String> queryParams = new HashMap<>();
- 
+
+	private String[] paramsMandatory = {"ins", "insAuthority", "lastName", "firstName", "sex", "birthDate", "birthPlace", "consent", "patientID", "patientIDIssuer"};  
+
+	private String[] paramsAll = {"ins", "insAuthority", "lastName", "firstName", "sex", "birthDate", "birthPlace",
+			"StudyInstanceUID", "modality", "accessionNumber", "studyDate", "anatomicRegion", "situation", "consent", "patientID", "patientIDIssuer", "issuer"};  
+
 	@Inject
 	WebTokenAuth webTokenAuth;
 
@@ -70,19 +75,34 @@ public class ParameterList {
 	@POST
 	@Produces(MediaType.TEXT_PLAIN)
 	public Response echo(String requestBody) throws Exception {
-
+		boolean validParams = false;
 		queryParams.clear();
 		UUID uuid = UUID.randomUUID();
-
 		// Retrieving query parameters from url
 		String[] pairs = requestBody.split("&");
 		for (String pair : pairs) {
 			String[] keyValuePair = pair.split("=");
+			if(keyValuePair.length <2) {
+				return Response.status(400).build();
+			}
+
+			validParams = this.verifExist(keyValuePair[0]); 
+			if (!validParams) {
+				return Response.status(400).build();
+			}
+
 			// Adding query params in local map
 			this.queryParams.put(keyValuePair[0], keyValuePair[1]);
 		}
 		// Adding local map with uuid in Cache map
 		this.paramsCache.put(uuid.toString(), this.queryParams);
+		for ( String param: paramsMandatory)  
+		{  
+			validParams = this.verifMandatory(param); 
+			if (!validParams) {
+				return Response.status(400).build();
+			}
+		}  
 
 		// Redirect to viewer if studyinstanceUIDs in query params
 		if(this.queryParams.containsKey("studyInstanceUID")) {
@@ -166,7 +186,7 @@ public class ParameterList {
 		}
 		else return Response.status(401).build();
 	}
-	
+
 	/**
 	 * Return consent associated with uuid
 	 * 
@@ -192,6 +212,30 @@ public class ParameterList {
 	 */
 	public String getSituation(String uuid) {
 		return this.paramsCache.get(uuid).getOrDefault("situation", "empty");
+	}
+
+	private boolean verifMandatory(String value) {
+		boolean valid = true;
+		if(this.queryParams.get(value) == null) {
+			valid = false;
+		}
+		return valid;
+	}
+
+	/**
+	 * Return boolean if all parameters here
+	 * 
+	 * @param value
+	 * @return if value accepted, the return true, else false
+	 */
+	private boolean verifExist(String value) {
+		boolean valid = false;
+		for ( String param: paramsAll)  
+		{  
+			if(Objects.equals(param, value))
+				valid = true;
+		}  
+		return valid;
 	}
 }
 

@@ -1,5 +1,7 @@
 /*
- *  XadesRequest.java - DRIMBox
+ *  WadoErrorException.java - DRIMBox
+ *
+ * N°IDDN : IDDN.FR.001.020012.000.S.C.2023.000.30000
  *
  * MIT License
  *
@@ -23,30 +25,15 @@
  * SOFTWARE.
  */
 
-package com.bcom.drimbox.xades;
+package com.bcom.drimbox.utils.exceptions;
 
-import com.bcom.drimbox.dmp.xades.file.CDAFile;
-import com.bcom.drimbox.dmp.xades.file.KOSFile;
-import com.bcom.drimbox.dmp.xades.request.ProvideAndRegisterRequest;
-import io.quarkus.test.junit.QuarkusTest;
-import org.junit.jupiter.api.Test;
+// TODO : maybe merge with RequestErrorException
+public class WadoErrorException extends RuntimeException {
+    int errorCode;
+    public WadoErrorException(String errorMessage, int errorCode) {
+        super(errorMessage);
+        this.errorCode = errorCode;
+    }
 
-import java.io.File;
-
-import static com.bcom.drimbox.xades.CDAParsing.CDA_TEST_FILE;
-
-@QuarkusTest
-public class XadesRequest {
-
-	@Test
-	public void testRequest() {
-		CDAFile c = new CDAFile(new File(ClassLoader.getSystemResource(CDA_TEST_FILE).getPath()));
-		KOSFile k = new KOSFile(new File(ClassLoader.getSystemResource("kos.dcm").getPath()));
-		try {
-			ProvideAndRegisterRequest r = new ProvideAndRegisterRequest(c, k);
-		} catch (Exception e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-	}
+    public int getErrorCode() { return errorCode; }
 }

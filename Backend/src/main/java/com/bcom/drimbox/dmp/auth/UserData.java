@@ -29,7 +29,7 @@ package com.bcom.drimbox.dmp.auth;
 
 import java.util.UUID;
 
-import javax.json.JsonObject;
+import jakarta.json.JsonObject;
 
 import com.bcom.drimbox.psc.tokens.AccessToken;
 import com.bcom.drimbox.psc.tokens.IdToken;

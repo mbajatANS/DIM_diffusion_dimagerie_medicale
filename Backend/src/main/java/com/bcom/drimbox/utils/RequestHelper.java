@@ -27,18 +27,24 @@
 
 package com.bcom.drimbox.utils;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-import javax.ws.rs.core.MultivaluedMap;
-import javax.ws.rs.core.UriInfo;
+import com.bcom.drimbox.pacs.PacsCache;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
+import jakarta.ws.rs.core.MultivaluedMap;
+import jakarta.ws.rs.core.UriInfo;
 
+import com.bcom.drimbox.utils.exceptions.RequestErrorException;
+import org.dcm4che3.mime.MultipartParser;
 import org.jboss.resteasy.reactive.RestResponse;
 
 import com.bcom.drimbox.pacs.CMoveSCU;
@@ -102,7 +108,7 @@ public class RequestHelper {
 		} catch (Exception e) {
 			Log.fatal("error while reading server string response");
 		}
-		return getDeniedStringResponse();
+		return getErrorStringResponse();
 	}
 
 	public RestResponse<byte[]> readFileResponse(HttpURLConnection connection) {
@@ -113,28 +119,35 @@ public class RequestHelper {
 					.build();
 		} catch (Exception e) {
 			Log.fatal("error while reading server file response");
-			return RestResponse.ResponseBuilder.ok(new byte[0]).status(401).build();
+			return RestResponse.ResponseBuilder.ok(new byte[0]).status(500).build();
 		}
 	}
 
 	/**
-	 * Convenience function that returns 401 RestResponse for String
+	 * Convenience function that returns 500 RestResponse for String
 	 */
-	public RestResponse<String> getDeniedStringResponse() {
-		return RestResponse.ResponseBuilder.ok("").status(401).build();
+	public RestResponse<String> getErrorStringResponse() {
+		return getErrorStringResponse("Internal server error", 500);
+	}
+
+	public RestResponse<String> getErrorStringResponse(String message, int code) {
+		return RestResponse.ResponseBuilder.ok(message).status(code).build();
 	}
 
 	/**
-	 * Convenience function that returns 401 RestResponse for files
+	 * Convenience function that returns 500 RestResponse for files
 	 */
 	public RestResponse<byte[]> getDeniedFileResponse() {
-		return RestResponse.ResponseBuilder.ok(new byte[0]).status(401).build();
+		return getDeniedFileResponse(500);
 	}
 
+	public RestResponse<byte[]> getDeniedFileResponse(int code) {
+		return RestResponse.ResponseBuilder.ok(new byte[0]).status(code).build();
+	}
 
 	// Todo : add String authToken
 	public interface ServiceConnection {
-		HttpURLConnection connect(String url) throws Exception ;
+		HttpURLConnection connect(String url) throws RequestErrorException;
 	}
 
 	// Todo : see if Response<> can do the work instead to avoid duplicate functions
@@ -145,9 +158,12 @@ public class RequestHelper {
 
 			connection.disconnect();
 			return response;
+		} catch (RequestErrorException e) {
+			logError("string request", pacsUrl, e.getMessage());
+			return getErrorStringResponse(e.getMessage(), e.getErrorCode());
 		} catch (Exception e) {
 			logError("string request", pacsUrl, e.getMessage());
-			return getDeniedStringResponse();
+			return getErrorStringResponse();
 		}
 	}
 
@@ -171,12 +187,55 @@ public class RequestHelper {
 		}
 	}
 
-	public Multi<byte[]> fileRequestCMove(String pacsUrl, List<String> transferSyntaxes) {
+	private interface BoundaryFunc { String getBoundary(String contentType); }
+	public List<byte[]> multipartFileRequest(String pacsUrl, ServiceConnection service) {
+		try {
+			HttpURLConnection connection = service.connect(pacsUrl);
+
+			BoundaryFunc boundaryManager = (String contentType) -> {
+				String[] respContentTypeParams = contentType.split(";");
+				for (String respContentTypeParam : respContentTypeParams)
+					if (respContentTypeParam.replace(" ", "").startsWith("boundary="))
+						return respContentTypeParam
+								.substring(respContentTypeParam.indexOf('=') + 1)
+								.replaceAll("\"", "");
+
+				return null;
+			};
+
+			String boundary = boundaryManager.getBoundary(connection.getContentType());
+			if (boundary == null) {
+				Log.fatal("Invalid response. Unpacking of parts not possible.");
+				throw new RequestErrorException("Multipart boundary cannot be determined", 500);
+			}
+
+			List<byte[]> fileList = new ArrayList<>();
+
+			new MultipartParser(boundary).parse(new BufferedInputStream(connection.getInputStream()), (partNumber, multipartInputStream) -> {
+						Map<String, List<String>> headerParams = multipartInputStream.readHeaderParams();
+						try {
+							//Log.info("Image time : " + Duration.between(startTime, Instant.now()).toString());
+							fileList.add(multipartInputStream.readAllBytes());
+						} catch (Exception e) {
+							Log.fatal("Failed to process Part #" + partNumber + headerParams, e);
+						}
+			});
+
+
+			connection.disconnect();
+			return fileList;
+		} catch (Exception e) {
+			logError("file request", pacsUrl, e.getMessage());
+			return new ArrayList<>();
+		}
+	}
+
+	public Multi<byte[]> fileRequestCMove(String pacsUrl, List<String> supportedTransferSyntax, List<String> preferredTransferSyntax, String boundary) {
 		String studyUID = pacsUrl.split("/studies/")[1].split("/")[0];
 		String serieUID = pacsUrl.split("/series/")[1].split("/")[0];
 
 		try {
-			return cMoveSCU.cMove(studyUID, serieUID, transferSyntaxes);
+			return cMoveSCU.cMove(studyUID, serieUID, supportedTransferSyntax, preferredTransferSyntax, boundary);
 		} catch (Exception e) {
 			logError("CMove request", "cMove " + studyUID + " / " + serieUID, e.getMessage());
 

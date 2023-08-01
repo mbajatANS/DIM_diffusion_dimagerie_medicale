@@ -38,8 +38,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
+import io.vertx.mutiny.core.eventbus.EventBus;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 
 import io.quarkus.logging.Log;
 import io.smallrye.mutiny.Multi;
@@ -59,10 +60,15 @@ import org.dcm4che3.net.pdu.AAssociateRQ;
 import org.dcm4che3.net.pdu.PresentationContext;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
+import static com.bcom.drimbox.pacs.CStoreSCP.EB_DONE_ADDRESS;
+
 @Singleton
 public class CMoveSCU {
 	private Device device;
 	private ApplicationEntity ae;
+
+	@Inject
+	EventBus eventBus;
 
 	@ConfigProperty(name="dcm.cmove.callingAET")
 	String callingAET;
@@ -89,7 +95,7 @@ public class CMoveSCU {
 	}
 
 
-	public Multi<byte[]> cMove(String studyUID, String serieUID, List<String> transferSyntaxes)  {
+	public Multi<byte[]> cMove(String studyUID, String serieUID, List<String> supportedTransferSyntax, List<String> preferredTransferSyntax, String boundary)  {
 		Instant startTime = Instant.now();
 		// We start the cmove in another thread so we can return the Multi as soon as possible
 		vertx.executeBlocking(promise -> {
@@ -99,7 +105,10 @@ public class CMoveSCU {
 					this.request.setString(Tag.SeriesInstanceUID, VR.UI, serieUID);
 
 					cStoreSCP.resetMultipart();
-					cStoreSCP.resetTransferSyntaxes(transferSyntaxes);
+					cStoreSCP.setPreferredTransferSyntax(preferredTransferSyntax);
+					cStoreSCP.setSupportedTransferSyntax(supportedTransferSyntax);
+					cStoreSCP.setBoundary(boundary);
+
 					ExecutorService executor = Executors.newFixedThreadPool(4);
                     ScheduledExecutorService scheduledExecutor = Executors.newScheduledThreadPool(4);
 					try {
@@ -121,8 +130,15 @@ public class CMoveSCU {
 						scheduledExecutor.shutdown();
 					}
 					promise.complete();
-				}, res -> Log.info("Pacs cmove TimeTT : " + Duration.between(startTime, Instant.now()).toString())
-
+				}, res -> {
+					if (res.failed()) {
+						// TODO : handle this better
+						Log.error("Unexpected error : " + res);
+						eventBus.publish(EB_DONE_ADDRESS, true);
+					} else {
+						Log.info("Pacs cmove TimeTT : " + Duration.between(startTime, Instant.now()).toString());
+					}
+				}
 		);
 		return cStoreSCP.getResponseStream();
 	}

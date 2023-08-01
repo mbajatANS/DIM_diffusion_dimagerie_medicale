@@ -27,11 +27,13 @@
 
 package com.bcom.drimbox;
 
-import javax.annotation.PostConstruct;
-import javax.inject.Inject;
-import javax.inject.Singleton;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 
+import com.bcom.drimbox.dmp.xades.hl7.HL7Receiver;
 import com.bcom.drimbox.pacs.CStoreSCP;
+
+import jakarta.annotation.PostConstruct;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import io.quarkus.logging.Log;
@@ -59,6 +61,10 @@ public class DbMain {
 	@Inject
 	CStoreSCP cStoreSCP;
 
+	// Cache of instance datas
+	@Inject
+	HL7Receiver tcpListener;
+	
 	public enum DrimBOXMode {
 		SOURCE,
 		CONSO,
@@ -85,6 +91,8 @@ public class DbMain {
 			|| envDbMode.equals(RIS_ARG)) {
 			mode = DrimBOXMode.RIS;
 		}
+
+		tcpListener.start();
 
 		switch (mode) {
 			case SOURCE:
